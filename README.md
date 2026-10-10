@@ -1,18 +1,29 @@
-﻿# Skillup
+# Skillup
 
-A mobile-first career-readiness prototype for the SerpApi Hackathon: synthetic student evidence → target role → explainable skill gaps → learning resources → assessment → updated readiness.
+Skillup is a mobile-first career-readiness prototype built for the SerpApi Hackathon. It helps a student explore job listings, compare their evidence with a target role, review honest resume improvements, plan learning, and track progress. Readiness scores are informational evidence-coverage indicators, not employment predictions.
+
+## Implemented features
+
+| Area | What is available |
+| --- | --- |
+| Jobs & insights | Authenticated SerpApi `google_jobs` search with location, keyword, career-stage filters, bounded pagination, caching, source links, and explicit provider failures. Listings are normalized before use and can be compared with a synthetic student profile. |
+| Skill demand | Retained job-search samples are grouped into distinct-job skill rankings, role comparisons, and personal learning priorities. |
+| Resume Enhancer | Upload or paste a TXT/DOCX resume, select a target role or retrieved job, inspect explainable alignment checks, review each suggested change, save a confirmed revision, restore the original, and export DOCX or TXT. The screen shows one revision editor and one saved-revision statistics summary; uploaded text is not repeated as read-only or parsed-section dumps. |
+| LinkedIn Analyzer | Save supplied career information or a TXT/DOCX profile export, optionally retrieve public indexed excerpts through SerpApi, use official LinkedIn OpenID Connect when configured, compare the saved profile with a target role, and add grounded improvement tasks. The editable source text is not repeated in a separate analysis dump. |
+| Learning & roadmap | Explainable skill gaps, curated fallback resources when live resource search is unavailable, Python/SQL/Docker assessments, milestone progress, and student-owned roadmap tasks. |
+| Privacy & ownership | Prototype sign-in, student-scoped records, consent/confirmation for saved resume and profile text, and development-only admin CSV/XLSX import. Provider keys remain on the backend. |
 
 ## Requirements
 
-- Python 3.12 (tested)
-- Node.js 22.13 or newer for Expo SDK 57
-- Backend runtime dependencies: root `requirements.txt`, which includes `backend/requirements.txt`
-- Backend test dependencies: `backend/requirements-dev.txt`
-- Frontend dependencies: `mobile/package.json` and `mobile/package-lock.json`
+- Python 3.12 or later
+- Node.js 22.13 or later (Expo SDK 57)
+- A SerpApi key for live job discovery and public-profile lookup
 
-## Backend setup (PowerShell)
+## Run locally
 
-From the repository root:
+### 1. Configure and run the backend
+
+From the repository root in PowerShell:
 
 ```powershell
 python -m venv backend/.venv
@@ -20,16 +31,19 @@ backend/.venv/Scripts/python.exe -m pip install -r requirements.txt
 Copy-Item backend/.env.example backend/.env
 ```
 
-Set independent random values for `AUTH_SIGNING_KEY`, `ADMIN_PASSWORD`, and `DEMO_PASSWORD` in `backend/.env`. Leave `APP_ENV=development` for the local demo. Add `SERPAPI_API_KEY` there to enable live search; otherwise roadmap resources use clearly labelled curated fallback. All credentials stay backend-only.
+Set independent values for `AUTH_SIGNING_KEY`, `ADMIN_PASSWORD`, and `DEMO_PASSWORD` in `backend/.env`. Leave `APP_ENV=development` for a local demo. Set `SERPAPI_API_KEY` to enable live jobs and public-profile lookup. If the provider regularly needs longer than the default 10 seconds, increase `SERPAPI_TIMEOUT_SECONDS` (for example, `30`).
 
 ```powershell
 cd backend
 .venv/Scripts/python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Health: http://127.0.0.1:8000/api/health. API documentation: http://127.0.0.1:8000/docs.
+Backend health: http://127.0.0.1:8000/api/health
+API documentation: http://127.0.0.1:8000/docs
 
-## Frontend setup (second terminal)
+### 2. Configure and run the frontend
+
+In a second PowerShell window:
 
 ```powershell
 cd mobile
@@ -38,11 +52,11 @@ Copy-Item .env.example .env
 npx.cmd expo start --web --port 8081
 ```
 
-Set `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000` for local web development. Open http://localhost:8081. Sign in as `demo` using the backend's `DEMO_PASSWORD`, or `admin` using `ADMIN_PASSWORD` for CSV/XLSX imports. Tokens are held in memory.
+Set `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000` in `mobile/.env`, then open http://localhost:8081. Sign in as `demo` with the `DEMO_PASSWORD` set in `backend/.env`; use `admin` and `ADMIN_PASSWORD` for the import workflow.
 
-For a physical phone, use the computer's LAN IP in `EXPO_PUBLIC_API_URL` and bind FastAPI to `0.0.0.0` on a trusted LAN.
+For a physical device, use the computer's trusted-LAN address in `EXPO_PUBLIC_API_URL` and bind FastAPI to `0.0.0.0`.
 
-## Checks
+## Verify changes
 
 ```powershell
 cd backend
@@ -51,7 +65,7 @@ $env:APP_ENV = 'test'
 .venv/Scripts/python.exe -m pytest
 ```
 
-`APP_ENV=test` is only for isolated tests; do not run a network server in that mode.
+`APP_ENV=test` is for isolated tests only. Do not run the development server in that mode.
 
 ```powershell
 cd mobile
@@ -61,18 +75,18 @@ npx.cmd expo install --check
 npx.cmd expo export --platform web
 ```
 
-Latest verification: 95 backend tests and 5 frontend helper tests passed; TypeScript, lint, and web export passed, including `/linkedin`, `/resume`, `/jobs`, and `/market`. The Resume Enhancer, optional user-supplied LinkedIn context, and milestone-linked to-do list passed full browser acceptance, including real DOCX download and refresh/re-login persistence. Actual stored SerpApi listing analysis was also verified. Physical-device picker and native share acceptance remains outstanding. See [resume/profile/roadmap report](docs/RESUME_PROFILE_ROADMAP.md), [industry insights report](docs/INDUSTRY_SKILL_DEMAND.md), [job discovery handoff](docs/JOB_DISCOVERY_HANDOFF.md), and [frontend redesign report](docs/FRONTEND_REDESIGN.md).
+## Current limits
 
-## Current scope
+- Resume extraction supports TXT and DOCX only; PDF/image extraction and ATS scoring are not implemented.
+- Free-text job-description extraction, SWOT generation, interview practice, production accounts, offline-first mobile support, and production deployment hardening are outside the current prototype scope.
+- Search listings may be stale or incomplete. Skillup does not verify that an opening remains active.
+- Public profile results are limited to indexed, public information and are labeled as such. Supplied skill mentions do not establish assessed proficiency.
+- Use synthetic data for the demo. Do not store real student data in prototype imports.
 
-New: **Skill demand** (`/market`) combines retained job-search samples into distinct-job rankings, role comparisons, and personal evidence/learning priorities. The Jobs resume panel accepts actual TXT/DOCX uploads (1 MiB maximum). See [industry skill demand report](docs/INDUSTRY_SKILL_DEMAND.md) for calculations, endpoints, component adaptations, setup, and checks.
+## Project structure
 
-Implemented: synthetic profile, seeded and retrieved-job comparison, deterministic skill gaps/readiness, authenticated SerpApi job discovery with cache and bounded pagination, retrieved-page skill insights, pasted-text resume advice, progress-preserving role roadmaps, SQL/Python/Docker quizzes, dashboard, prototype authentication/ownership checks, and development-only admin CSV/XLSX imports. Open **Jobs & insights** after signing in. Live job discovery requires `SERPAPI_API_KEY`; without it, the UI displays an explicit configuration error.
+- `backend/` — FastAPI, SQLAlchemy, SQLite, SerpApi integration, and tests
+- `mobile/` — Expo Router / React Native web and mobile client
+- `docs/` — product handoffs, implementation notes, and verification evidence
 
-Incomplete: PDF resume extraction/ATS evaluation, free-text job-description analysis, SWOT generation, interview practice, production student accounts, full offline mobile operation, and production deployment hardening. Resume body-text extraction supports TXT/DOCX. Readiness is informational, never an employment probability. Use synthetic records only.
-
-`.env` files, credentials, databases, virtual environments, installed dependencies, build output, and local browser profiles are excluded from Git. Commit `.env.example` files only.
-
-Resume Enhancer now focuses on resume upload, original-versus-revised strength statistics, target analysis, reviewed improvements and export. **LinkedIn Analyzer** is a separate `/linkedin` tab for public lookup, profile editing, saved skill/section analysis and official basic-member connection. Text strength uses a displayed deterministic rubric, separate from job alignment. Desktop/mobile-web navigation and saved-statistics updates passed browser acceptance; no additional configuration is needed.
-
-LinkedIn Analyzer now offers contextual career coaching: skill evidence and impact checks, profile text quality, target-role or pasted-description comparisons, prioritized improvements, grounded wording suggestions and explicit roadmap actions. Analysis uses saved consented text and clearly labels partial public-search data; no extra API key is required.
+`.env` files, credentials, databases, virtual environments, installed dependencies, build output, and local browser profiles are ignored by Git. Commit only `.env.example` files.

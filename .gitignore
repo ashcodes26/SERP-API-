@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite3
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+.expo/
+dist/
+.DS_Store
+mobile/.preview-chrome/
+mobile/expo-env.d.ts
+*.tsbuildinfo

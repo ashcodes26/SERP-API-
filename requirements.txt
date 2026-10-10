@@ -1,0 +1,2 @@
+# Backend runtime dependencies. The Expo frontend uses mobile/package.json.
+-r backend/requirements.txt

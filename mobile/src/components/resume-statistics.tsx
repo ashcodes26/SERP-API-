@@ -1,21 +1,15 @@
-import { Text, View, useWindowDimensions } from 'react-native';
+import { Text, View } from 'react-native';
 import { Card, ui } from '@/components/career-ui';
 import { design as d } from '@/constants/design';
 import type { ResumeStatisticsOut } from '@/types/contracts';
 
-export function ResumeStatistics({ original, revised, dirty }: { original: ResumeStatisticsOut; revised: ResumeStatisticsOut; dirty: boolean }) {
-  const { width } = useWindowDimensions();
-  const change = revised.strength_score - original.strength_score;
+export function ResumeStatistics({ revised, dirty }: { revised: ResumeStatisticsOut; dirty: boolean }) {
   return <Card>
-    <Text style={ui.kicker}>RESUME STATISTICS / ORIGINAL VS REVISION</Text>
+    <Text style={ui.kicker}>RESUME STATISTICS</Text>
     <Text style={ui.heading}>Your resume strength at a glance.</Text>
-    <Text style={ui.body}>Text strength change: {change > 0 ? '+' : ''}{change} points</Text>
-    <Text style={ui.muted}>Calculated from your preserved original and saved revision. {dirty ? 'Save your editor changes to update the revised statistics.' : 'Statistics match the saved text.'} Job alignment appears separately after you choose and analyze a target.</Text>
-    <View style={{ flexDirection: width >= 800 ? 'row' : 'column', gap: 20 }}>
-      <StatisticsColumn label="Original resume" stats={original} />
-      <StatisticsColumn label="Saved revision" stats={revised} />
-    </View>
-    <Text style={ui.muted}>{original.rubric_version}: {original.rubric}</Text>
+    <Text style={ui.muted}>{dirty ? 'Save your editor changes to update these statistics.' : 'Statistics match the saved revision.'} Job alignment appears separately after you choose and analyze a target.</Text>
+    <StatisticsColumn label="Saved revision" stats={revised} />
+    <Text style={ui.muted}>{revised.rubric_version}: {revised.rubric}</Text>
     <Text style={ui.heading}>What to improve in the saved revision</Text>
     {revised.feedback.length ? revised.feedback.map(value => <Text key={value} style={ui.body}>{value}</Text>) : <Text style={ui.body}>All of these limited text indicators are present. Review accuracy, relevance and layout before applying.</Text>}
   </Card>;

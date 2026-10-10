@@ -121,14 +121,6 @@ export default function LinkedInScreen() {
         </View>}
         {(profile?.consent_at || publicPreview) && <>{profile?.consent_at && <Text style={ui.muted}>Saved {new Date(profile.updated_at!).toLocaleString()} / {profile.import_method?.replaceAll('_', ' ') ?? 'URL only; no import'} / {profile.confirmed ? 'Student confirmed, not externally verified' : 'Self-reported; confirmation needed'}</Text>}<Action secondary disabled={busy} onPress={() => setConfirmation({ title: 'Remove profile data', message: 'Delete your LinkedIn URL, supplied text and public preview, and invalidate source-derived resume analyses? Previously approved resume text is preserved; delete a resume to remove that copy.', action: async () => { const result = await linkedinApi.remove(); setImported(await linkedinApi.get()); setPublicPreview(null); setAuthorization(null); setConnection(null); setNotice(result.message); } })}>Remove LinkedIn data</Action></>}
       </Card>
-      {!!profile?.profile_text && <Card>
-        <Text style={ui.kicker}>SAVED PROFILE ANALYSIS</Text><Text style={ui.heading}>Your career information.</Text>
-        <Text style={ui.body}>{profile.detected_skills.length} supported skill mentions: {profile.detected_skills.join(', ') || 'None detected'}</Text>
-        <Text style={ui.muted}>Based on the saved text. Mentions describe supplied or reviewed information and do not establish assessed proficiency. Save editor changes to update this analysis.</Text>
-        {Object.entries(profile.sections).filter(([, lines]) => lines.length > 0).map(([section, lines]) => <View style={ui.divider} key={section}>
-          <Text style={ui.label}>{section.toUpperCase()}</Text>{lines.map((line, index) => <Text selectable style={ui.body} key={index}>{line}</Text>)}
-        </View>)}
-      </Card>}
     </>}
     {confirmation && <Confirm title={confirmation.title} message={confirmation.message} busy={busy} onCancel={() => setConfirmation(null)} onConfirm={() => void perform(async () => { await confirmation.action(); setConfirmation(null); })} />}
   </ScrollView></SafeAreaView>;

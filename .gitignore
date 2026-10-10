@@ -12,5 +12,7 @@ node_modules/
 dist/
 .DS_Store
 mobile/.preview-chrome/
+mobile/.market-browser/
+docs/.workspace-downloads/
 mobile/expo-env.d.ts
 *.tsbuildinfo

@@ -1,8 +1,18 @@
 import { API_BASE_URL, API_TIMEOUT_MS } from '@/config';
-import type { ErrorBody, HealthOut, ProfileOut, JobOut, AnalysisOut, RoadmapItemOut, DashboardOut, AssessmentOut, AssessmentSubmitIn } from '@/types/contracts';
+import type { DocumentPickerAsset } from 'expo-document-picker';
+import type { ResumeWorkspaceOut, ResumeTargetIn, LinkedInIn, LinkedInOut, LinkedInAnalysisOut, LinkedInTargetRole, RoadmapTaskIn, RoadmapTaskPatch, RoadmapTaskOut, TaskListOut, MarketFilter, MarketDemandOut, MarketMeOut, MarketCompareOut, MarketScopeOut, ResumeUploadOut, ErrorBody, HealthOut, ProfileOut, JobOut, AnalysisOut, RoadmapItemOut, DashboardOut, AssessmentOut, AssessmentSubmitIn, JobSearchIn, JobSearchOut, JobListingOut, JobMatchOut, MarketSkillsOut, ResumeAdviceOut, RoadmapStatus } from '@/types/contracts';
 
 let sessionToken: string | null = null;
-export const session = { setToken(token: string | null) { sessionToken = token; }, clear() { sessionToken = null; } };
+let sessionStudentId: number | null = null;
+let selectedTarget: AnalysisOut | null = null;
+export const session = {
+  setToken(token: string | null) { sessionToken = token; },
+  setStudentId(id: number | null) { sessionStudentId = id; },
+  getStudentId() { return sessionStudentId; },
+  setTarget(analysis: AnalysisOut) { selectedTarget = analysis; },
+  takeTarget() { const target = selectedTarget; selectedTarget = null; return target; },
+  clear() { sessionToken = null; sessionStudentId = null; selectedTarget = null; },
+};
 export interface LoginResponse { access_token: string; token_type: string; expires_in: number; role: "admin" | "student"; student_id: number | null }
 
 export class ApiError extends Error {
@@ -18,14 +28,14 @@ export class ApiError extends Error {
 }
 
 /** Typed JSON request with timeout; maps network, timeout and structured backend errors to ApiError. */
-export async function request<T>(path: string, init: RequestInit = {}, timeoutMs = API_TIMEOUT_MS): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, timeoutMs = API_TIMEOUT_MS, binary = false): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       signal: controller.signal,
-      headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}), ...init.headers },
+      headers: { Accept: 'application/json', ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}), ...init.headers },
     });
     if (!res.ok) {
       let body: Partial<ErrorBody> | undefined;
@@ -42,13 +52,13 @@ export async function request<T>(path: string, init: RequestInit = {}, timeoutMs
         res.status,
       );
     }
-    return (await res.json()) as T;
+    return (binary ? await res.arrayBuffer() : await res.json()) as T;
   } catch (e) {
     if (e instanceof ApiError) throw e;
     if (e instanceof Error && e.name === 'AbortError') {
       throw new ApiError('timeout', 'The server took too long to respond.', true);
     }
-    throw new ApiError('network_error', `Cannot reach the AIMORA backend at ${API_BASE_URL}.`, true);
+    throw new ApiError('network_error', `Cannot reach the Skillup backend at ${API_BASE_URL}.`, true);
   } finally {
     clearTimeout(timer);
   }
@@ -60,6 +70,84 @@ export const api = {
 };
 
 const jsonPost = <T>(path: string, payload: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(payload) });
+export function fileForm(asset: DocumentPickerAsset, fields: Record<string, string>) {
+  const form = new FormData();
+  Object.entries(fields).forEach(([name, value]) => form.append(name, value));
+  if (asset.file) form.append('file', asset.file, asset.name);
+  else form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain') } as unknown as Blob);
+  return form;
+}
+export const resumeApi = {
+  list: () => request<ResumeWorkspaceOut[]>('/api/resumes'),
+  get: (id: number) => request<ResumeWorkspaceOut>(`/api/resumes/${id}`),
+  create: (text: string, storage_consent: boolean) => jsonPost<ResumeWorkspaceOut>('/api/resumes', { text, storage_consent }),
+  upload: (asset: DocumentPickerAsset, consent: boolean) => request<ResumeWorkspaceOut>('/api/resumes/upload', { method: 'POST', body: fileForm(asset, { storage_consent: String(consent) }) }),
+  analyze: (id: number, body: ResumeTargetIn) => jsonPost<ResumeWorkspaceOut>(`/api/resumes/${id}/analyze`, body),
+  decide: (id: number, suggestion: string, version: number, decision: 'accepted' | 'rejected' | 'pending', confirmation: string) => request<ResumeWorkspaceOut>(`/api/resumes/${id}/suggestions/${suggestion}`, { method: 'PATCH', body: JSON.stringify({ version, decision, confirmation }) }),
+  apply: (id: number, version: number) => jsonPost<ResumeWorkspaceOut>(`/api/resumes/${id}/apply`, { version }),
+  save: (id: number, version: number, text: string, factual_confirmation: boolean) => request<ResumeWorkspaceOut>(`/api/resumes/${id}/revision`, { method: 'PUT', body: JSON.stringify({ version, text, factual_confirmation }) }),
+  restore: (id: number, version: number) => jsonPost<ResumeWorkspaceOut>(`/api/resumes/${id}/restore`, { version }),
+  remove: (id: number, version: number) => request<{ deleted: boolean }>(`/api/resumes/${id}?version=${version}`, { method: 'DELETE' }),
+  export: (id: number, version: number, format: 'docx' | 'txt', final_review_confirmed: boolean) => request<ArrayBuffer>(`/api/resumes/${id}/export`, { method: 'POST', body: JSON.stringify({ version, format, final_review_confirmed }) }, API_TIMEOUT_MS, true),
+};
+export const linkedinApi = {
+  analyze: (target_role: LinkedInTargetRole, job_description: string) => request<LinkedInAnalysisOut>('/api/profile/linkedin/analyze', { method: 'POST', body: JSON.stringify({ target_role, job_description }) }),
+  publicSearch: (profile_url: string, consent: boolean) => request<import('@/types/contracts').LinkedInPublicSearchOut>('/api/profile/linkedin/public-search', { method: 'POST', body: JSON.stringify({ profile_url, consent }) }, 60000),
+  latestPublicSearch: () => request<import('@/types/contracts').LinkedInPublicSearchOut | null>('/api/profile/linkedin/public-search'),
+  get: () => request<LinkedInOut>('/api/profile/linkedin'),
+  save: (body: LinkedInIn) => request<LinkedInOut>('/api/profile/linkedin', { method: 'PUT', body: JSON.stringify(body) }),
+  upload: (asset: DocumentPickerAsset, body: LinkedInIn) => request<LinkedInOut>('/api/profile/linkedin/upload', { method: 'POST', body: fileForm(asset, { consent: String(body.consent), confirmed: String(body.confirmed), ...(body.profile_url ? { profile_url: body.profile_url } : {}) }) }),
+  automatic: (body: LinkedInIn) => jsonPost<import('@/types/contracts').LinkedInAuthorizationOut>('/api/profile/linkedin/automatic', body),
+  connection: (id: string) => request<import('@/types/contracts').LinkedInConnectionOut>(`/api/profile/linkedin/connection/${encodeURIComponent(id)}`),
+  latestConnection: () => request<import('@/types/contracts').LinkedInConnectionOut | null>('/api/profile/linkedin/connection'),
+  cancel: (id: string) => request<{ deleted: boolean }>(`/api/profile/linkedin/connection/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  remove: () => request<{ deleted: boolean; message: string }>('/api/profile/linkedin', { method: 'DELETE' }),
+};
+export type TaskView = 'all' | 'today' | 'upcoming' | 'completed';
+export type TaskSort = 'due_date' | 'priority' | 'updated' | 'title';
+export const tasksApi = {
+  skills: () => request<import('@/types/contracts').SkillOut[]>('/api/roadmap/skills'),
+  milestone: (id: number) => request<RoadmapItemOut>(`/api/roadmap/milestones/${id}`),
+  list: (view: TaskView = 'all', sort: TaskSort = 'due_date') => request<TaskListOut>(`/api/roadmap/tasks?view=${view}&sort=${sort}`),
+  create: (body: RoadmapTaskIn) => jsonPost<RoadmapTaskOut>('/api/roadmap/tasks', body),
+  update: (id: number, body: RoadmapTaskPatch) => request<RoadmapTaskOut>(`/api/roadmap/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  remove: (id: number, version: number) => request<{ deleted: boolean }>(`/api/roadmap/tasks/${id}?version=${version}`, { method: 'DELETE' }),
+};
+export const jobsApi = {
+  search: (query: JobSearchIn) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([key, value]) => { if (value !== null && value !== undefined && value !== '') params.set(key, String(value)); });
+    return request<JobSearchOut>(`/api/jobs/search?${params.toString()}`, {}, 60000);
+  },
+  detail: (id: number) => request<JobListingOut>(`/api/jobs/${id}`),
+  match: (id: number, student_id: number) => jsonPost<JobMatchOut>(`/api/jobs/${id}/match`, { student_id }),
+  market: (search_id: string) => request<MarketSkillsOut>(`/api/market/skills?search_id=${search_id}`),
+  advice: (id: number, student_id: number, text: string) => jsonPost<ResumeAdviceOut>(`/api/jobs/${id}/resume-advice`, { student_id, text }),
+  roadmap: (student_id: number, analysis_id: number) => request<RoadmapItemOut[]>(`/api/roadmap/${student_id}/analysis/${analysis_id}`, {}, 120000),
+  progress: (item_id: number, status: RoadmapStatus, completion_evidence?: string) => request<RoadmapItemOut>(`/api/roadmap/items/${item_id}`, { method: 'PATCH', body: JSON.stringify({ status, completion_evidence }) }),
+};
+
+const marketQuery = (filters: MarketFilter) => {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value) query.set(key, value); });
+  return query;
+};
+export const marketApi = {
+  scopes: () => request<MarketScopeOut>('/api/market/scopes'),
+  demand: (filters: MarketFilter) => request<MarketDemandOut>(`/api/market/skills?${marketQuery(filters)}`),
+  me: (filters: MarketFilter) => request<MarketMeOut>(`/api/market/skills/me?${marketQuery(filters)}`),
+  compare: (roles: string[], filters: MarketFilter) => {
+    const query = marketQuery(filters); query.set('roles', roles.join(','));
+    return request<MarketCompareOut>(`/api/market/skills/compare?${query}`);
+  },
+};
+export function uploadResume(jobId: number, studentId: number, asset: DocumentPickerAsset) {
+  const form = new FormData();
+  form.append('student_id', String(studentId));
+  if (asset.file) form.append('file', asset.file, asset.name);
+  else form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain') } as unknown as Blob);
+  return request<ResumeUploadOut>(`/api/jobs/${jobId}/resume-upload`, { method: 'POST', body: form });
+}
 export const careerApi = {
   seed: () => jsonPost<{ student_id: number; job_id: number; synthetic: boolean }>('/api/demo/seed', {}),
   profile: (id: number) => request<ProfileOut>(`/api/profile/${id}`),
@@ -91,7 +179,7 @@ export const importApi = {
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (error instanceof Error && error.name === 'AbortError') throw new ApiError('upload_timeout', 'Upload timed out. Try a smaller file or check the connection.', true);
-      throw new ApiError('upload_network_error', 'Could not upload to the AIMORA backend.', true);
+      throw new ApiError('upload_network_error', 'Could not upload to the Skillup backend.', true);
     } finally { clearTimeout(timer); }
   },
   preview: (job_id: number, mapping: Record<string, string>) => jsonPost<ImportSummary>('/api/import/preview', { job_id, mapping }),

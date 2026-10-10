@@ -76,8 +76,10 @@ def test_timeout():
 
 
 def test_missing_key_endpoint_and_invalid_input(monkeypatch):
-    with TestClient(app) as client:
-        # No key in the environment in this test environment.
+    from app import main as main_module
+    monkeypatch.setattr(main_module, 'get_settings', lambda: Settings(_env_file=None, app_env='test', serpapi_api_key=''))
+    with TestClient(main_module.create_app()) as client:
+        # Explicitly isolate this case from the developer's local .env credentials.
         resp = client.post("/api/resources/search", json={"skill": "SQL"})
         assert resp.status_code == 503
         assert resp.json()["code"] == "SERPAPI_NOT_CONFIGURED"

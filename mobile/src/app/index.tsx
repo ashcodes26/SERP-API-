@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
+import CareerRoadmap from '@/components/career-roadmap';
 import { design as d } from '@/constants/design';
-import { ApiError, careerApi, type QuestionSet } from '@/api/client';
+import { ApiError, careerApi, jobsApi, session, type QuestionSet } from '@/api/client';
 import type { AnalysisOut, DashboardOut, JobOut, ProfileOut, RoadmapItemOut } from '@/types/contracts';
 
 type Stage = 'welcome' | 'profile' | 'analysis' | 'roadmap' | 'quiz' | 'result';
@@ -16,7 +18,7 @@ function Panel({ children }: { children: React.ReactNode }) { return <View style
 function Heading({ children }: { children: React.ReactNode }) { return <Text style={s.heading}>{children}</Text>; }
 function Metric({ label, value }: { label: string; value: string }) { return <View style={s.metric}><Text style={s.metricValue}>{value}</Text><Text style={s.muted}>{label}</Text></View>; }
 function readinessCard(readiness: NonNullable<DashboardOut['readiness']>) {
-  return <Panel><Text style={s.eyebrow}>{readiness.label}</Text><View style={s.scoreRow}><Text style={s.score}>{pct(readiness.alignment)}</Text><Text style={s.scoreLabel}>ROLE ALIGNMENT</Text></View><View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(readiness.alignment * 100) }} style={s.track}><View style={[s.fill, { width: `${Math.max(0, Math.min(1, readiness.alignment)) * 100}%` }]} /></View><View style={s.metricRow}><Metric label="Evidence coverage" value={pct(readiness.evidence_coverage)}/><Metric label="Confidence" value={pct(readiness.confidence)}/></View>{readiness.drivers.map((v, i) => <Text style={s.note} key={i}>• {v}</Text>)}<Text style={s.disclaimer}>{readiness.disclaimer}</Text></Panel>;
+  return <Panel><Text style={s.eyebrow}>{readiness.label}</Text><View style={s.scoreRow}><Text style={s.score}>{readiness.measurable ? pct(readiness.alignment) : '?'}</Text><Text style={s.scoreLabel}>ROLE ALIGNMENT</Text></View><View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: Math.round(readiness.alignment * 100) }} style={s.track}><View style={[s.fill, { width: `${Math.max(0, Math.min(1, readiness.alignment)) * 100}%` }]} /></View><View style={s.metricRow}><Metric label="Evidence coverage" value={pct(readiness.evidence_coverage)}/><Metric label="Confidence" value={pct(readiness.confidence)}/></View>{readiness.drivers.map((v, i) => <Text style={s.note} key={i}>• {v}</Text>)}<Text style={s.disclaimer}>{readiness.disclaimer}</Text></Panel>;
 }
 
 export default function HomeScreen() {
@@ -43,6 +45,20 @@ export default function HomeScreen() {
     } finally { setBusy(false); }
   }, []);
 
+  useFocusEffect(useCallback(() => {
+    const target = session.takeTarget();
+    if (!target) return;
+    let active = true;
+    void run(async () => {
+      const student = await careerApi.profile(target.student_id);
+      if (!active) return;
+      setIds({ student_id: target.student_id, job_id: target.job.id });
+      setProfile(student); setRole(target.job); setAnalysis(target); setRoadmap([]);
+      setQuiz(null); setDashboard(null); setLastScore(null); setStage('analysis');
+    });
+    return () => { active = false; };
+  }, [run]));
+
   const start = () => void run(async () => {
     const selected = await careerApi.seed();
     if (!selected.synthetic) throw new Error('Expected a synthetic demo student.');
@@ -55,7 +71,7 @@ export default function HomeScreen() {
     setAnalysis(result); setStage('analysis');
   }); };
   const loadRoadmap = () => { if (!ids) return; void run(async () => {
-    const tasks = await careerApi.roadmap(ids.student_id);
+    const tasks = analysis ? await jobsApi.roadmap(ids.student_id, analysis.id) : await careerApi.roadmap(ids.student_id);
     setRoadmap(tasks); setStage('roadmap');
   }); };
   const loadQuiz = (skillId: number) => void run(async () => {
@@ -68,15 +84,11 @@ export default function HomeScreen() {
     setLastScore(result.score); setDashboard(latest); setStage('result');
   }); };
   const refresh = () => { if (!ids) return; void run(async () => { setDashboard(await careerApi.dashboard(ids.student_id)); setStage('result'); }); };
-  const openResource = (url: string) => void run(async () => {
-    if (!/^https:\/\//i.test(url) || !(await Linking.canOpenURL(url))) throw new Error('Cannot open this resource URL.');
-    await Linking.openURL(url);
-  });
   const reset = () => { setError(null); setRetry(null); setStage('welcome'); setIds(null); setProfile(null); setRole(null); setAnalysis(null); setRoadmap([]); setQuiz(null); setDashboard(null); };
   const quizSkills = analysis?.gaps.filter(g => ['SQL','Python','Docker'].includes(g.skill.canonical_name)) ?? [];
 
   return <SafeAreaView edges={['bottom']} style={s.root}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-    <View style={s.top}><Text style={s.brand}>AIMORA <Text style={s.brandDot}>●</Text></Text><Text style={s.mode}>SYNTHETIC WORKSPACE</Text></View>
+    <View style={s.top}><Text style={s.brand}>Skillup <Text style={s.brandDot}>●</Text></Text><Text style={s.mode}>SYNTHETIC WORKSPACE</Text></View>
     <View style={s.steps}>{(['profile', 'analysis', 'roadmap', 'quiz', 'result'] as const).map((step, index) => {
       const available = step === 'profile' ? !!profile : step === 'quiz' ? !!quiz : !!analysis;
       return <Pressable key={step} accessibilityRole="button" accessibilityState={{ selected: stage === step, disabled: busy || !available }} disabled={busy || !available} onPress={() => { if (step === 'roadmap') loadRoadmap(); else if (step === 'result') refresh(); else setStage(step); }} style={[s.step, stage === step && s.stepActive, !available && { opacity: 0.5 }]}><Text style={[s.stepText, stage === step && s.stepTextActive]}>{String(index + 1).padStart(2, '0')} / {step === 'result' ? 'Progress' : step === 'quiz' ? 'Practice' : step.charAt(0).toUpperCase() + step.slice(1)}</Text></Pressable>;
@@ -85,20 +97,20 @@ export default function HomeScreen() {
     <Heading>{stage === 'welcome' ? 'Build skills that open doors.' : stage === 'profile' ? 'Your career profile' : stage === 'analysis' ? 'Know where you stand' : stage === 'roadmap' ? 'Your learning route' : stage === 'quiz' ? 'Test your knowledge' : 'See your progress'}</Heading>
     <Text style={s.intro}>{stage === 'welcome' ? 'Compare demonstrated skills with a real role profile. Discover resources, practice, and measure your progress.' : 'Evidence-backed career readiness for a selected target role.'}</Text>
     {error && <Panel><Text style={s.errorTitle}>Request unsuccessful</Text><Text style={s.note}>{error}</Text><Text style={s.disclaimer}>We could not reach your workspace. Check your connection and try again.</Text>{retry && <Action title="Try again" secondary onPress={retry}/>}</Panel>}
-    {busy && <View style={s.loading}><ActivityIndicator size="large" color={accent}/><Text style={s.muted}>Syncing with AIMORA…</Text></View>}
+    {busy && <View style={s.loading}><ActivityIndicator size="large" color={accent}/><Text style={s.muted}>Syncing with Skillup…</Text></View>}
     {stage === 'welcome' && <><Panel><Text style={s.eyebrow}>YOUR LEARNING JOURNEY</Text><Text style={s.listText}>01   Student profile and skill evidence</Text><Text style={s.listText}>02   Role alignment and priority gaps</Text><Text style={s.listText}>03   Learning resources from SerpApi or clearly labelled curated fallback</Text><Text style={s.listText}>04   Assessment and refreshed readiness</Text></Panel><Action title="Start synthetic demo →" onPress={start} disabled={busy}/><Text style={s.disclaimer}>A guided workspace with synthetic student evidence. Start to load your profile and target role.</Text></>}
     {stage === 'profile' && profile && role && <><Panel><Text style={s.eyebrow}>STUDENT · SYNTHETIC</Text><Text style={s.cardTitle}>{profile.student.name}</Text><Text style={s.note}>{profile.student.program} · {profile.student.specialization}</Text><Text style={s.note}>Student ID: {profile.student.student_id}</Text><Text style={s.note}>CGPA: {profile.student.cgpa ?? 'Not available'}</Text></Panel><Panel><Text style={s.eyebrow}>COMPETENCIES</Text>{profile.competencies.length === 0 ? <Text style={s.note}>No skill evidence yet.</Text> : profile.competencies.map(c => <View style={s.line} key={c.skill.id}><Text style={s.lineTitle}>{c.skill.canonical_name}</Text><Text style={s.value}>{c.level === null ? 'Unknown' : `${c.level}/5`}</Text></View>)}</Panel><Panel><Text style={s.eyebrow}>TARGET ROLE</Text><Text style={s.cardTitle}>{role.title}</Text><Text style={s.note}>{role.skills.length} competencies in role profile</Text></Panel><Action title="Analyze skill gaps →" onPress={analyze} disabled={busy}/></>}
     {stage === 'analysis' && analysis && <>{readinessCard(analysis.readiness)}<Panel><Text style={s.eyebrow}>PRIORITY GAPS</Text>{analysis.gaps.length === 0 ? <Text style={s.note}>No gaps identified from current evidence.</Text> : analysis.gaps.map(g => <View style={s.gap} key={g.skill.id}><View style={s.line}><Text style={s.lineTitle}>{g.skill.canonical_name}</Text><Text style={s.tag}>{g.priority.toUpperCase()}</Text></View><Text style={s.note}>Current: {g.current_level ?? 'Unknown'} / 5  ·  Target: {g.required_level ?? 'Unknown'} / 5</Text><Text style={s.note}>{g.rationale}</Text></View>)}</Panel>{analysis.warnings.length > 0 && <Panel>{analysis.warnings.map((w,i)=><Text style={s.note} key={i}>{w}</Text>)}</Panel>}<Action title="Build learning roadmap →" onPress={loadRoadmap} disabled={busy}/></>}
-    {stage === 'roadmap' && <><Panel><Text style={s.eyebrow}>PERSONALIZED ACTIONS</Text>{roadmap.length === 0 ? <Text style={s.note}>No roadmap tasks available for this analysis.</Text> : roadmap.map((item, index) => <View style={s.gap} key={item.id}><Text style={s.eyebrow}>WEEK {item.week ?? index + 1} · {item.status.replace(/_/g,' ')}</Text><Text style={s.lineTitle}>{item.task}</Text><Text style={s.note}>{item.objective}</Text><Text style={s.note}>Effort: {item.effort_hours ?? 'Not specified'} hours</Text><Text style={s.disclaimer}>Source: {item.resource_provenance === 'serpapi_live' ? 'SerpApi live discovery' : item.resource_provenance === 'curated_fallback' ? 'Curated fallback (not live search)' : 'Demo resource'}</Text>{item.resource_url && <Action title={`Open: ${item.resource_title ?? 'Learning resource'} ↗`} onPress={() => openResource(item.resource_url!)} secondary disabled={busy}/>}</View>)}</Panel><Text style={s.eyebrow}>PRACTICE AN IDENTIFIED SKILL</Text>{quizSkills.length ? quizSkills.map(g => <Action key={g.skill.id} title={`Take ${g.skill.canonical_name} assessment →`} onPress={() => loadQuiz(g.skill.id)} disabled={busy} secondary/>) : <Text style={s.note}>No supported mini assessment matches these gaps. Current question sets: SQL, Python, Docker.</Text>}<Action title="Refresh dashboard" onPress={refresh} secondary disabled={busy}/></>}
+    {stage === 'roadmap' && <><CareerRoadmap items={roadmap} onChange={setRoadmap}/><Text style={s.eyebrow}>PRACTICE AN IDENTIFIED SKILL</Text>{quizSkills.length ? quizSkills.map(g => <Action key={g.skill.id} title={`Take ${g.skill.canonical_name} assessment →`} onPress={() => loadQuiz(g.skill.id)} disabled={busy} secondary/>) : <Text style={s.note}>No supported mini assessment matches these gaps. Current question sets: SQL, Python, Docker.</Text>}<Action title="Refresh dashboard" onPress={refresh} secondary disabled={busy}/></>}
     {stage === 'quiz' && quiz && <><Panel><Text style={s.eyebrow}>{quiz.question_set_version} · {quiz.questions.length} QUESTIONS</Text>{quiz.questions.map((q, index) => <View style={s.gap} key={q.id}><Text style={s.lineTitle}>{index+1}. {q.prompt}</Text>{q.options.map(option => <Pressable accessibilityRole="radio" disabled={busy} accessibilityState={{ checked: answers[q.id] === option, disabled: busy }} key={option} onPress={() => setAnswers(prev => ({ ...prev, [q.id]: option }))} style={[s.option, answers[q.id] === option && s.selected]}><Text style={[s.optionText, answers[q.id] === option && s.selectedText]}>{option}</Text></Pressable>)}</View>)}</Panel><Action title="Submit assessment" onPress={submit} disabled={busy || Object.keys(answers).length !== quiz.questions.length}/><Action title="Back to roadmap" onPress={() => setStage('roadmap')} secondary disabled={busy}/></>}
     {stage === 'result' && dashboard && <>{lastScore !== null && <Panel><Text style={s.eyebrow}>LATEST ASSESSMENT</Text><Text style={s.score}>{pct(lastScore)}</Text><Text style={s.note}>Question-set performance, not a certification.</Text></Panel>}{dashboard.readiness ? readinessCard(dashboard.readiness) : <Panel><Text style={s.note}>Analyze a role to see readiness.</Text></Panel>}<Panel><Text style={s.eyebrow}>ROADMAP STATUS</Text>{Object.entries(dashboard.roadmap_progress).map(([key,value]) => <View style={s.line} key={key}><Text style={s.note}>{key.replace(/_/g,' ')}</Text><Text style={s.value}>{value}</Text></View>)}<Text style={s.note}>Next step: {dashboard.next_action?.task ?? 'Review your learning plan'}</Text><Text style={s.disclaimer}>Mode: {dashboard.data_mode === 'demo' ? 'Synthetic demo' : 'Live student data'}</Text></Panel><Action title="Reanalyze target role" onPress={analyze} disabled={busy}/><Action title="Refresh dashboard" onPress={refresh} secondary disabled={busy}/></>}
     {stage !== 'welcome' && <Action title="Reset demo" onPress={reset} secondary disabled={busy}/>}
-    <Text style={s.footer}>AIMORA · Learn deliberately. Grow measurably.</Text>
+    <Text style={s.footer}>Skillup · Learn deliberately. Grow measurably.</Text>
   </ScrollView></SafeAreaView>;
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: d.canvas }, content: { padding: 24, paddingTop: 36, paddingBottom: 48, width: '100%', maxWidth: 880, alignSelf: 'center', gap: 20 },
+  root: { flex: 1, backgroundColor: d.canvas }, content: { padding: 24, paddingTop: 36, paddingBottom: 48, width: '100%', maxWidth: 1200, alignSelf: 'center', gap: 20 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }, brand: { fontSize: 12, fontWeight: '500', letterSpacing: 2, color: d.muted }, brandDot: { fontSize: 10, color: d.muted }, mode: { fontSize: 10, letterSpacing: 1, color: d.muted, borderWidth: 1, borderColor: d.border, borderRadius: 4, padding: 8 },
   steps: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }, step: { padding: 10, borderBottomWidth: 1, borderBottomColor: d.border }, stepActive: { borderBottomColor: d.body, backgroundColor: d.elevated }, stepText: { fontSize: 11, color: d.muted }, stepTextActive: { color: d.text },
   kicker: { fontSize: 10, letterSpacing: 2, color: d.muted }, heading: { fontSize: 42, lineHeight: 48, fontWeight: '500', color: d.text, letterSpacing: -1 }, intro: { fontSize: 16, lineHeight: 25, color: d.muted, marginBottom: 16, maxWidth: 600 },

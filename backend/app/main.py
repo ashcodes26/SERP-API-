@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,9 @@ from app.services.retention import purge_expired_imports
 from app.services.demo_seed import seed_demo
 from app.services.serpapi import SearchFailure, search_resources
 from app.services.learning import create_roadmap, get_questions, submit_assessment, dashboard, latest_analysis
+from app.routes.jobs import router as jobs_router
+from app.routes.workspace import router as workspace_router
+from app.services.linkedin import PrivateLinkedInCallback
 
 
 @asynccontextmanager
@@ -31,13 +36,33 @@ async def lifespan(_: FastAPI):
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="AIMORA API", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Skillup API", version=__version__, lifespan=lifespan)
+    app.add_middleware(PrivateLinkedInCallback)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.include_router(jobs_router)
+    app.include_router(workspace_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def workspace_validation(request: Request, exc: RequestValidationError):
+        if request.url.path.startswith(('/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks')):
+            first = exc.errors()[0]
+            field = '.'.join(str(part) for part in first['loc'] if part not in {'body', 'query'})
+            # Never echo uploaded resume/profile input (including invalid Unicode).
+            return JSONResponse(status_code=422, content={'detail': {'code': 'INVALID_INPUT',
+                'message': f"{field}: {first['msg']}", 'retryable': False}})
+        return await request_validation_exception_handler(request, exc)
+
+    @app.middleware('http')
+    async def private_workspace_cache(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith(('/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks')):
+            response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @app.get("/api/health", response_model=HealthOut, tags=["system"])
     def health() -> HealthOut:

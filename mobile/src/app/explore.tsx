@@ -11,12 +11,12 @@ const steps = [
 ];
 export default function Explore() {
   return <SafeAreaView edges={['bottom']} style={s.screen}><ScrollView contentContainerStyle={s.wrap}>
-    <Text style={s.eyebrow}>THE AIMORA GUIDE</Text><Text style={s.title}>Clarity, one step at a time.</Text>
+    <Text style={s.eyebrow}>THE Skillup GUIDE</Text><Text style={s.title}>Clarity, one step at a time.</Text>
     <Text style={s.intro}>A focused loop for turning career evidence into deliberate progress.</Text>
     {steps.map(([number, title, body, label]) => <View key={number} style={s.card}><View style={s.cardTop}><Text style={s.number}>{number}</Text><Text style={s.label}>{label}</Text></View><Text style={s.cardTitle}>{title}</Text><Text style={s.body}>{body}</Text></View>)}
     <Link href="/" style={s.link}>Open your journey →</Link>
     <View style={s.notice}><Text style={s.noticeTitle}>A workspace for exploration</Text><Text style={s.body}>This local prototype uses synthetic records and authenticated demo accounts. Admins can import CSV/XLSX records in the Import tab. A reachable backend is required.</Text><Text style={s.body}>Readiness describes role alignment from current evidence. It does not predict employment or placement.</Text></View>
-    <Text style={s.footer}>AIMORA / Learn deliberately. Grow measurably.</Text>
+    <Text style={s.footer}>Skillup / Learn deliberately. Grow measurably.</Text>
   </ScrollView></SafeAreaView>;
 }
 const s = StyleSheet.create({

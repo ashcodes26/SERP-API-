@@ -1,5 +1,7 @@
 """Typed, server-only SerpApi transport and normalization."""
 from urllib.parse import urlparse
+import logging
+import re
 
 import httpx
 from pydantic import ValidationError
@@ -9,6 +11,19 @@ from app.enums import ResourceProvenance
 from app.schemas import ResourceLink, ResourceSearchIn, ResourceSearchOut
 
 SERPAPI_URL = "https://serpapi.com/search.json"
+
+
+class _RedactProviderKey(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # httpx emits full request URLs at INFO, even when application code does not.
+        message = record.getMessage()
+        record.msg = re.sub(r'api_key(?:=|%3D)[^&\s"\']+', 'api_key=[redacted]', message, flags=re.I)
+        record.args = ()
+        return True
+
+
+logging.getLogger('httpx').addFilter(_RedactProviderKey())
+logging.getLogger('httpcore').addFilter(_RedactProviderKey())
 
 
 class SearchFailure(Exception):
@@ -58,23 +73,22 @@ def _normalize(raw: object, limit: int, kind: str) -> list[ResourceLink]:
     return results
 
 
-async def search_resources(request: ResourceSearchIn, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> ResourceSearchOut:
+async def request_search(params: dict, settings: Settings, transport: httpx.AsyncBaseTransport | None = None, *, allow_empty_google: bool = False) -> dict:
+    """Shared bounded transport. Never reflect upstream URLs or provider errors."""
     if not settings.serpapi_configured:
         raise SearchFailure("SERPAPI_NOT_CONFIGURED", "Search is unavailable: server API key is not configured", 503)
-    skill = request.skill.strip()
-    if not skill:
-        raise SearchFailure("INVALID_QUERY", "Search query cannot be blank", 422)
-    kind = request.kind
-    query = f"{skill} tutorial OR course" if kind == "learning_resource" else f"{skill} jobs"
-    params = {
-        "engine": "google" if kind == "learning_resource" else "google_jobs",
-        "q": query,
-        "api_key": settings.serpapi_api_key.get_secret_value(),
-        "output": "json",
-    }
+    params = {**params, "api_key": settings.serpapi_api_key.get_secret_value(), "output": "json"}
     try:
         async with httpx.AsyncClient(timeout=settings.serpapi_timeout_seconds, transport=transport) as client:
-            response = await client.get(SERPAPI_URL, params=params)
+            # Stream and cap the provider body before JSON parsing.
+            async with client.stream("GET", SERPAPI_URL, params=params) as streamed:
+                chunks, size = [], 0
+                async for chunk in streamed.aiter_bytes():
+                    size += len(chunk)
+                    if size > 2_000_000:
+                        raise SearchFailure("UPSTREAM_MALFORMED", "Search provider response exceeded the size limit")
+                    chunks.append(chunk)
+                response = httpx.Response(streamed.status_code, content=b"".join(chunks))
             if response.status_code == 429:
                 raise SearchFailure("SERPAPI_RATE_LIMITED", "Search provider is rate limited; retry later", 503, True)
             if response.status_code in (401, 403):
@@ -94,8 +108,22 @@ async def search_resources(request: ResourceSearchIn, settings: Settings, transp
     if not isinstance(payload, dict):
         raise SearchFailure("UPSTREAM_MALFORMED", "Search provider returned an invalid payload")
     if payload.get("error"):
+        if (allow_empty_google and payload.get('error') == "Google hasn't returned any results for this query."
+                and isinstance(payload.get('search_information'), dict)
+                and payload['search_information'].get('organic_results_state') == 'Fully empty'):
+            return {**payload, 'organic_results': []}
         # Never reflect arbitrary provider error text (which could contain credentials/URLs).
         raise SearchFailure("SERPAPI_UPSTREAM_ERROR", "Search provider reported an error", 502)
+    return payload
+
+
+async def search_resources(request: ResourceSearchIn, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> ResourceSearchOut:
+    skill = request.skill.strip()
+    if not skill:
+        raise SearchFailure("INVALID_QUERY", "Search query cannot be blank", 422)
+    kind = request.kind
+    query = f"{skill} tutorial OR course" if kind == "learning_resource" else f"{skill} jobs"
+    payload = await request_search({"engine": "google" if kind == "learning_resource" else "google_jobs", "q": query}, settings, transport)
     key = "organic_results" if kind == "learning_resource" else "jobs_results"
     results = _normalize(payload.get(key, []), min(request.max_results, settings.serpapi_max_results), kind)
     return ResourceSearchOut(query=query, results=results, provenance=ResourceProvenance.serpapi_live,

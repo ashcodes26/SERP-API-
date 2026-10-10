@@ -14,6 +14,6 @@ body { font-feature-settings: 'cv01' on, 'ss03' on, 'zero' on; }
 
 /* Keep static web output responsive before React hydrates. */
 @media (min-width: 900px) {
-  #aimora-login-grid { flex-direction: row !important; align-items: center !important; gap: 80px !important; }
-  #aimora-login-headline { font-size: 64px !important; line-height: 66px !important; letter-spacing: -1.4px !important; }
+  #skillup-login-grid { flex-direction: row !important; align-items: center !important; gap: 80px !important; }
+  #skillup-login-headline { font-size: 64px !important; line-height: 66px !important; letter-spacing: -1.4px !important; }
 }

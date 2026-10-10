@@ -1,6 +1,7 @@
 """Phase 4 learning workflow: persisted roadmap, auditable quiz, fresh readiness."""
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from collections import Counter
 from app import models
 from app.config import Settings
 from app.enums import ResourceProvenance
@@ -69,7 +70,22 @@ async def create_roadmap(db: Session, student: models.Student, analysis: models.
     gaps = db.scalars(select(models.SkillGap).where(models.SkillGap.analysis_id == analysis.id)
                       .order_by(models.SkillGap.id)).all()
     rank = {'high': 0, 'medium': 1, 'low': 2}
-    gaps = sorted(gaps, key=lambda g: (rank.get(g.priority, 3), -(g.gap or 0), g.id))
+    # Repeated observed requirements are only a tie-breaker after existing gap priority.
+    recent_jobs = list(dict.fromkeys(db.scalars(select(models.Analysis.job_id).where(
+        models.Analysis.student_pk == student.id).order_by(models.Analysis.id.desc()).limit(50)).all()))[:10]
+    demand = Counter()
+    for job_id in recent_jobs:
+        for skill_id in db.scalars(select(models.JobSkill.skill_id).where(models.JobSkill.job_id == job_id)).all():
+            demand[skill_id] += 1
+    # The selected retrieved role can use an actual, deduplicated collected search
+    # sample. Import locally because market's resource links reuse CURATED above.
+    from app.services.market import roadmap_demand_context
+    collected = roadmap_demand_context(db, analysis.job_id)
+    if collected is not None:
+        counts = {s.name: s.distinct_job_count for s in collected.skills}
+        demand = Counter({s.id: counts.get(s.canonical_name, 0) for s in db.scalars(select(models.Skill)).all()})
+    gaps = sorted(gaps, key=lambda g: (rank.get(g.priority, 3), -(g.gap or 0), -demand[g.skill_id], g.id))
+    target_job = db.get(models.Job, analysis.job_id)
     for index, gap in enumerate(gaps[:8]):
         skill = db.get(models.Skill, gap.skill_id)
         if skill is None:
@@ -84,15 +100,25 @@ async def create_roadmap(db: Session, student: models.Student, analysis: models.
                     title, url, provenance = choice.title, str(choice.url), choice.provenance.value
             except SearchFailure:
                 pass  # Explicitly labelled curated fallback; no synthetic provider data.
+        prior = db.scalar(select(models.RoadmapItem).join(models.Analysis, models.RoadmapItem.analysis_id == models.Analysis.id)
+            .where(models.RoadmapItem.student_pk == student.id, models.RoadmapItem.skill_id == skill.id,
+                   models.Analysis.job_id == analysis.job_id, models.RoadmapItem.analysis_id != analysis.id)
+            .order_by(models.RoadmapItem.id.desc()))
+        repeated = (f' Observed in {demand[skill.id]} of {len(recent_jobs)} distinct analyzed role profiles; this is your sample, not the whole market.'
+                    if demand[skill.id] >= 2 else '')
+        if collected is not None:
+            repeated = (f' Mentioned in {demand[skill.id]} of {collected.sample_size} distinct collected jobs in the '
+                        f'{collected.filters.role} / {collected.filters.location or "unspecified location"} search scope; not a market-wide estimate.')
         item = models.RoadmapItem(
             student_pk=student.id, analysis_id=analysis.id, skill_id=skill.id,
-            task=f'Practice {skill.canonical_name} for {analysis.job_id} role',
+            task=f'Practice {skill.canonical_name} for {target_job.title}',
             objective=(f'Build evidence for {skill.canonical_name} at the role-required level'
-                       if gap.required_level is not None else f'Assess current {skill.canonical_name} proficiency'),
+                       if gap.required_level is not None else f'Assess current {skill.canonical_name} proficiency') + f'. {gap.rationale}' + repeated,
             resource_title=title, resource_url=url, resource_provenance=provenance,
             effort_hours=3.0 if gap.priority == 'high' else 2.0, week=index + 1,
             completion_criteria=f'Complete a {skill.canonical_name} exercise and record evidence',
-            status='not_started')
+            status=prior.status if prior else 'not_started',
+            completion_evidence=prior.completion_evidence if prior else None)
         db.add(item)
     db.commit()
     return [RoadmapItemOut.model_validate(row) for row in db.scalars(

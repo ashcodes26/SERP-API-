@@ -32,6 +32,11 @@ def normalize_skill(value: str) -> tuple[str, str | None]:
         raise ValueError('Skill name cannot be empty')
     return _ALIASES.get(key, (value.strip(), None))
 
+
+def known_skill_terms() -> dict[str, tuple[str, str | None]]:
+    """Shared dictionary for conservative listing/resume keyword extraction."""
+    return dict(_ALIASES)
+
 @dataclass(frozen=True)
 class ScoredRole:
     readiness: ReadinessOut
@@ -87,5 +92,8 @@ def score_role(job: JobOut, competencies: list[Competency]) -> ScoredRole:
     confidence = round(confidence_total / total, 4)
     drivers = [f'{g.skill.canonical_name}: {g.rationale}' for g in gaps[:3]]
     return ScoredRole(ReadinessOut(alignment=alignment, evidence_coverage=coverage,
-                                  confidence=confidence, formula_version=FORMULA_VERSION, drivers=drivers),
+                                  confidence=confidence, formula_version=FORMULA_VERSION, drivers=drivers,
+                                  measurable=any(r.expected_level is not None and r.importance > 0 for r in job.skills),
+                                  label=('Readiness indicator (informational)' if any(r.expected_level is not None and r.importance > 0 for r in job.skills)
+                                         else 'Alignment unavailable: required proficiency unknown')),
                       strengths, gaps, warnings)

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "AIMORA",
+    "name": "Skillup",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -30,7 +30,8 @@
         {
           "backgroundColor": "#08090a"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

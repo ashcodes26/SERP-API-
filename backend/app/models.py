@@ -1,6 +1,6 @@
 """SQLAlchemy models. Mirrors PRD section 11.1; proficiency NULL means *unknown*, never zero."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, date
 
 from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -200,3 +200,82 @@ class ImportStagedRow(Base):
     row_number: Mapped[int] = mapped_column(Integer)
     values: Mapped[dict] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(16), default="pending")
+
+
+class DiscoveredJob(Base):
+    """Provider metadata lives beside existing jobs; old tables need no alteration."""
+    __tablename__ = "discovered_jobs"
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True)
+    provider_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    listing: Mapped[dict] = mapped_column(JSON)
+
+
+class JobSearchCache(Base):
+    __tablename__ = "job_search_cache"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(64), index=True)
+    page: Mapped[int] = mapped_column(Integer)
+    response: Mapped[dict] = mapped_column(JSON)
+    retrieved_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class ResumeWorkspace(Base):
+    __tablename__ = 'resume_workspaces'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    filename: Mapped[str] = mapped_column(String(200))
+    original_text: Mapped[str] = mapped_column(Text)
+    revised_text: Mapped[str] = mapped_column(Text)
+    target: Mapped[dict] = mapped_column(JSON, default=dict)
+    analysis: Mapped[dict | None] = mapped_column(JSON)
+    decisions: Mapped[dict] = mapped_column(JSON, default=dict)
+    version: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    updated_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class LinkedInProfile(Base):
+    __tablename__ = 'linkedin_profiles'
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    profile_url: Mapped[str | None] = mapped_column(String(500))
+    profile_text: Mapped[str] = mapped_column(Text, default='')
+    import_method: Mapped[str | None] = mapped_column(String(32))
+    consent_at: Mapped[datetime] = mapped_column(default=_now)
+    confirmed: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class LinkedInPublicLookup(Base):
+    __tablename__ = 'linkedin_public_lookups'
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    id: Mapped[str] = mapped_column(String(64), unique=True)
+    result: Mapped[dict] = mapped_column(JSON)
+
+
+class LinkedInAuthorization(Base):
+    """Short-lived authorization receipts; provider tokens are never persisted."""
+    __tablename__ = 'linkedin_authorizations'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    expires_at: Mapped[datetime] = mapped_column(index=True)
+    status: Mapped[str] = mapped_column(String(16), default='pending')
+    name: Mapped[str | None] = mapped_column(String(200))
+    message: Mapped[str | None] = mapped_column(String(300))
+
+
+class RoadmapTask(Base):
+    __tablename__ = 'roadmap_tasks'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default='')
+    status: Mapped[str] = mapped_column(String(16), default='not_started')
+    priority: Mapped[str] = mapped_column(String(8), default='medium')
+    due_date: Mapped[date | None]
+    roadmap_milestone_id: Mapped[int | None] = mapped_column(ForeignKey('roadmap_items.id', ondelete='SET NULL'), index=True)
+    skill_id: Mapped[int | None] = mapped_column(ForeignKey('skills.id'))
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    updated_at: Mapped[datetime] = mapped_column(default=_now)
+    completed_at: Mapped[datetime | None]
+    version: Mapped[int] = mapped_column(default=1)

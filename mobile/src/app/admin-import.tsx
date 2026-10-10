@@ -28,7 +28,7 @@ export default function AdminImport() {
     setUploaded(response); setMapping(response.suggested_mapping);
   });
   return <SafeAreaView edges={['bottom']} style={styles.screen}><ScrollView contentContainerStyle={styles.content}>
-    <Text style={styles.kicker}>AIMORA / DEMO ADMINISTRATION</Text>
+    <Text style={styles.kicker}>Skillup / DEMO ADMINISTRATION</Text>
     <Text style={styles.title}>A clear start for every student.</Text><View style={styles.steps}><Text style={styles.step}>01 / Upload</Text><Text style={styles.step}>02 / Map columns</Text><Text style={styles.step}>03 / Review & import</Text></View>
     <Text style={styles.note}>Bring synthetic student records into your workspace. Upload a file, match the columns, and review every row before importing.</Text>
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={pick} style={[uploaded ? styles.secondary : styles.primary, busy && { opacity: 0.5 }]}><Text style={uploaded ? styles.field : styles.primaryText}>{uploaded ? 'Choose another file' : 'Choose CSV / XLSX'}</Text></Pressable>

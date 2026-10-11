@@ -3,7 +3,7 @@ import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { jobsApi, resumeApi, session, tasksApi } from '@/api/client';
-import { Action, Card, ui } from '@/components/career-ui';
+import { Action, Card, Disclosure, ui } from '@/components/career-ui';
 import { Check, Confirm, Field, pickResume } from '@/components/workspace-controls';
 import { releasePickedResume } from '@/utils/picked-resume';
 import { downloadResume } from '@/utils/resume-download';
@@ -16,6 +16,7 @@ export default function ResumeScreen() {
   const params = useLocalSearchParams<{ job_id?: string }>();
   const [workspaces, setWorkspaces] = useState<ResumeWorkspaceOut[]>([]);
   const [workspace, setWorkspace] = useState<ResumeWorkspaceOut | null>(null);
+  const [savedResumesOpen, setSavedResumesOpen] = useState(false);
   const [paste, setPaste] = useState(''); const [storageConsent, setStorageConsent] = useState(false);
   const [draft, setDraft] = useState(''); const [finalReview, setFinalReview] = useState(false);
   const [format, setFormat] = useState<'docx' | 'txt'>('docx');
@@ -95,8 +96,9 @@ export default function ResumeScreen() {
         <Action disabled={busy || !storageConsent} onPress={() => replaceEditor('Replace active resume', 'Switch to a new upload and discard the unsaved local editor text? Your saved original and revisions remain available.', async () => { const asset = await pickResume(); if (!asset) return; try { const item = await resumeApi.upload(asset, storageConsent); select(item); await loadList(); setNotice(`Parsed ${asset.name}: ${item.original_text.length} characters. Original saved separately.`); } finally { releasePickedResume(asset); } })}>Upload or replace resume</Action>
         <Field label="Or paste original resume text" value={paste} onChange={setPaste} multiline disabled={busy} />
         <Action secondary disabled={busy || !storageConsent || paste.trim().length < 30} onPress={() => replaceEditor('Replace active resume', 'Create a new saved original and discard unsaved local editor text? Existing saved resumes are preserved.', async () => { select(await resumeApi.create(paste, storageConsent)); await loadList(); setNotice('Your original resume text is saved.'); })}>Save pasted resume as a new original</Action>
-        <Text style={ui.label}>Saved resumes ({workspaces.length})</Text>{workspaces.length === 0 && <Text style={ui.muted}>No saved resume yet. Upload a file or paste text to begin.</Text>}
-        {workspaces.map(item => <View key={item.id} style={ui.divider}><Text style={ui.body}>{item.filename} / #{item.id}{workspace?.id === item.id ? ' / Active' : ''}</Text><Text style={ui.muted}>{new Date(item.updated_at).toLocaleString()} / {item.target.title ?? 'Target not selected'}</Text><View style={ui.row}><Action secondary disabled={busy} onPress={() => replaceEditor('Reload saved resume', 'Discard local unsaved edits and open the saved version?', async () => { select(await resumeApi.get(item.id)); })}>Open saved resume #{item.id}</Action><Action secondary disabled={busy} onPress={() => setConfirmation({ title: 'Delete resume', message: 'Permanently delete this original, revision, target description, and analysis? Your other resumes, tasks, and optional profile are preserved.', action: async () => { const latest = await resumeApi.get(item.id); await resumeApi.remove(item.id, latest.version); if (workspace?.id === item.id) { setWorkspace(null); setDraft(''); } await loadList(); setNotice('Resume and its derived analysis deleted.'); } })}>Delete resume #{item.id}</Action></View></View>)}
+        {workspaces.length === 0 ? <><Text style={ui.label}>Saved resumes</Text><Text style={ui.muted}>No saved resume yet. Upload a file or paste text to begin.</Text></> : <Disclosure title={`Saved resume library · ${workspaces.length} saved`} summary={workspace ? `Current: ${workspace.filename} · #${workspace.id}` : 'Choose a saved resume to continue'} open={savedResumesOpen} onToggle={() => setSavedResumesOpen(value => !value)}>
+          {workspaces.map(item => <View key={item.id} style={ui.divider}><Text style={ui.body}>{item.filename} / #{item.id}{workspace?.id === item.id ? ' / Active' : ''}</Text><Text style={ui.muted}>{new Date(item.updated_at).toLocaleString()} / {item.target.title ?? 'Target not selected'}</Text><View style={ui.row}><Action secondary disabled={busy} onPress={() => replaceEditor('Reload saved resume', 'Discard local unsaved edits and open the saved version?', async () => { select(await resumeApi.get(item.id)); setSavedResumesOpen(false); })}>Open saved resume #{item.id}</Action><Action secondary disabled={busy} onPress={() => setConfirmation({ title: 'Delete resume', message: 'Permanently delete this original, revision, target description, and analysis? Your other resumes, tasks, and optional profile are preserved.', action: async () => { const latest = await resumeApi.get(item.id); await resumeApi.remove(item.id, latest.version); if (workspace?.id === item.id) { setWorkspace(null); setDraft(''); } await loadList(); setNotice('Resume and its derived analysis deleted.'); } })}>Delete resume #{item.id}</Action></View></View>)}
+        </Disclosure>}
         {workspace && <Text style={ui.body}>Parsed {workspace.original_text.length} characters from {workspace.filename}. The original is preserved separately while you edit the revision below.</Text>}
       </Card>
       {workspace && <>

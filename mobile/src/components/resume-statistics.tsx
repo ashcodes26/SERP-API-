@@ -16,7 +16,7 @@ export function ResumeStatistics({ revised, dirty }: { revised: ResumeStatistics
 }
 
 function StatisticsColumn({ label, stats }: { label: string; stats: ResumeStatisticsOut }) {
-  return <View style={{ flex: 1, minWidth: 0, padding: 20, borderRadius: 8, backgroundColor: d.elevated, gap: 12 }}>
+  return <View style={{ flex: 1, minWidth: 0, padding: 20, borderRadius: d.controlRadius, backgroundColor: d.elevated, gap: 12 }}>
     <Text style={ui.label}>{label}</Text>
     <Text style={ui.score}>{stats.strength_score} / 100</Text>
     <Text style={ui.body}>Resume text strength</Text>

@@ -90,6 +90,9 @@ export const resumeApi = {
   remove: (id: number, version: number) => request<{ deleted: boolean }>(`/api/resumes/${id}?version=${version}`, { method: 'DELETE' }),
   export: (id: number, version: number, format: 'docx' | 'txt', final_review_confirmed: boolean) => request<ArrayBuffer>(`/api/resumes/${id}/export`, { method: 'POST', body: JSON.stringify({ version, format, final_review_confirmed }) }, API_TIMEOUT_MS, true),
 };
+export const workspaceApi = {
+  clearSessionData: () => request<{ deleted: boolean }>('/api/workspace/session-data', { method: 'DELETE' }),
+};
 export const linkedinApi = {
   analyze: (target_role: LinkedInTargetRole, job_description: string) => request<LinkedInAnalysisOut>('/api/profile/linkedin/analyze', { method: 'POST', body: JSON.stringify({ target_role, job_description }) }),
   publicSearch: (profile_url: string, consent: boolean) => request<import('@/types/contracts').LinkedInPublicSearchOut>('/api/profile/linkedin/public-search', { method: 'POST', body: JSON.stringify({ profile_url, consent }) }, 60000),

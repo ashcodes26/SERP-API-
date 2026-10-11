@@ -1,7 +1,7 @@
-/** AIMORA UI design.zip: midnight surfaces, hairlines, one lime primary action. */
+/** Shared midnight, blue-violet workspace theme. */
 export const design = {
-  canvas: '#08090a', surface: '#0f1011', elevated: '#161718',
-  border: '#23252a', strongBorder: '#383b3f', text: '#ffffff',
-  body: '#d0d6e0', muted: '#8a8f98', accent: '#e4f222',
-  error: '#ff9b9b', radius: 12, controlRadius: 6,
+  canvas: '#070b19', surface: 'transparent', elevated: 'transparent',
+  border: '#2a3564', strongBorder: '#6576bc', text: '#f8f9ff',
+  body: '#d8e0ff', muted: '#9ba9d0', accent: '#836cff',
+  error: '#ffb4c0', radius: 20, controlRadius: 12,
 } as const;

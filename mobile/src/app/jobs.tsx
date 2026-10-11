@@ -3,7 +3,7 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, Vie
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { careerApi, jobsApi, session } from '@/api/client';
-import { Action, Card, ui } from '@/components/career-ui';
+import { Action, Card, Disclosure, ui } from '@/components/career-ui';
 import CareerRoadmap from '@/components/career-roadmap';
 import ResumeUpload from '@/components/resume-upload';
 import { design as d } from '@/constants/design';
@@ -65,7 +65,7 @@ export default function JobsScreen() {
       {sample.next_page_token && <Action secondary disabled={busy} onPress={() => search(true)}>Next result page →</Action>}
       <Action secondary disabled={busy} onPress={() => void perform(async () => setMarket(await jobsApi.market(sample.search_id)))}>Inspect skills in this result sample</Action>
     </>}
-    {market && <Card><Text style={ui.kicker}>OBSERVED SKILLS / SEARCH SAMPLE</Text><Text style={ui.heading}>{market.sample_size} unique listings</Text><Text style={ui.muted}>{market.scope.role} / {market.scope.location || 'Location not specified'} / {date(market.retrieved_at)}</Text>{market.skills.length ? market.skills.map(skill => <View style={ui.divider} key={skill.name}><Text style={ui.body}>{skill.name} / {skill.count} listings ({pct(skill.share)})</Text><Text style={ui.muted}>Required: {skill.required_count} / Preferred: {skill.preferred_count} / Other mentions: {skill.count - skill.required_count - skill.preferred_count}</Text></View>) : <Text style={ui.body}>No dictionary-supported skills found in this sample.</Text>}{market.warnings.map(w => <Text style={ui.muted} key={w}>{w}</Text>)}</Card>}
+    {market && <JobSampleSkills market={market} />}
     {detail && <Card><Text style={ui.kicker}>SELECTED LISTING / NOT VERIFIED ACTIVE</Text><Text style={ui.heading}>{detail.title}</Text><Text style={ui.body}>{detail.company ?? 'Company not supplied'} / {detail.location ?? 'Location not supplied'}</Text><Text style={ui.muted}>Retrieved {date(detail.retrieved_at)} / Source: {detail.source_domain ?? 'Unavailable'}</Text>
       {detail.source_url && <Action secondary disabled={busy} onPress={() => open(detail.source_url!)}>Open original source ↗</Action>}
       <Action secondary disabled={busy || !studentId} onPress={() => router.push({ pathname: "/resume", params: { job_id: detail.id } })}>Enhance my resume for this job →</Action>
@@ -94,4 +94,15 @@ export default function JobsScreen() {
     {roadmap && <CareerRoadmap items={roadmap} onChange={setRoadmap} />}
     <Text style={ui.muted}>Skillup / Retrieved data. Transparent evidence. Deliberate progress.</Text>
   </ScrollView></SafeAreaView>;
+}
+
+function JobSampleSkills({ market }: { market: MarketSkillsOut }) {
+  const [openSkill, setOpenSkill] = useState<string | null>(null);
+  return <Card><Text style={ui.kicker}>OBSERVED SKILLS / SEARCH SAMPLE</Text><Text style={ui.heading}>{market.sample_size} unique listings</Text><Text style={ui.muted}>{market.scope.role} · {market.scope.location || 'Location not specified'} · {date(market.retrieved_at)}</Text>
+    <Text style={ui.muted}>Select a skill to see how it appeared in this retrieved page.</Text>
+    {market.skills.length ? market.skills.map(skill => <Disclosure key={skill.name} title={skill.name} summary={`${skill.count} listing${skill.count === 1 ? '' : 's'} · ${pct(skill.share)}`} open={openSkill === skill.name} onToggle={() => setOpenSkill(current => current === skill.name ? null : skill.name)}>
+      <Text style={ui.body}>Required in {skill.required_count} · Preferred in {skill.preferred_count} · Other mentions in {skill.count - skill.required_count - skill.preferred_count}</Text>
+    </Disclosure>) : <Text style={ui.body}>No dictionary-supported skills found in this sample.</Text>}
+    {market.warnings.map(warning => <Text style={ui.muted} key={warning}>{warning}</Text>)}
+  </Card>;
 }

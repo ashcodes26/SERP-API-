@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { Action, Card, ui } from '@/components/career-ui';
+import { Action, Card, Disclosure, ui } from '@/components/career-ui';
 import type { LinkedInAnalysisOut, ProfileRoleMatchOut } from '@/types/contracts';
 
 export function LinkedInInsights({ analysis, busy, addTask }: { analysis: LinkedInAnalysisOut; busy: boolean; addTask: (title: string, description: string, priority: 'high' | 'medium' | 'low') => void }) {
   const supported = analysis.skills.filter(skill => skill.evidence_strength !== 'mention_only').length;
+  const [openSkill, setOpenSkill] = useState<string | null>(null);
   return <>
     <Card>
       <Text style={ui.kicker}>CAREER INTELLIGENCE / {analysis.engine.toUpperCase()}</Text>
@@ -32,11 +34,11 @@ export function LinkedInInsights({ analysis, busy, addTask }: { analysis: Linked
     </Card>
     <Card>
       <Text style={ui.heading}>Skill evidence, beyond keywords.</Text>
-      {analysis.skills.length ? analysis.skills.map(skill => <View style={ui.divider} key={skill.name}>
-        <Text style={ui.body}>{skill.name} / {skill.evidence_strength.replaceAll('_', ' ')}</Text>
-        <Text style={ui.muted}>Proficiency: unknown. Project context links a skill to that section; applied examples also contain a recognized contribution. Neither is an assessment.</Text>
-        {skill.excerpts.map((evidence, index) => <View key={index}><Text style={ui.label}>{evidence.section}</Text><Text selectable style={ui.body}>{evidence.excerpt}</Text></View>)}
-      </View>) : <Text style={ui.body}>No supported skill evidence detected. Add concrete tools and contributions in your profile editor.</Text>}
+      <Text style={ui.muted}>Select a skill to inspect its supporting excerpts. Context is evidence, not an assessed proficiency level.</Text>
+      {analysis.skills.length ? analysis.skills.map(skill => <Disclosure key={skill.name} title={skill.name} summary={skill.evidence_strength.replaceAll('_', ' ')} open={openSkill === skill.name} onToggle={() => setOpenSkill(current => current === skill.name ? null : skill.name)}>
+        <Text style={ui.muted}>Proficiency is unknown. Project context links a skill to that section; applied examples also contain a recognized contribution.</Text>
+        {skill.excerpts.map((evidence, index) => <View key={index} style={ui.divider}><Text style={ui.label}>{evidence.section}</Text><Text selectable style={ui.body}>{evidence.excerpt}</Text></View>)}
+      </Disclosure>) : <Text style={ui.body}>No supported skill evidence detected. Add concrete tools and contributions in your profile editor.</Text>}
     </Card>
     {!!analysis.role_matches.length && <Card>
       <Text style={ui.heading}>Career directions to explore.</Text>

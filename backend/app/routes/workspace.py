@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import Response, HTMLResponse
-from sqlalchemy import select, update, func
+from sqlalchemy import delete, select, update, func
 from sqlalchemy.orm import Session
 
 from app import models, schemas as s
@@ -118,6 +118,19 @@ def resume_get(item_id: int, db: Session = Depends(get_db), student=Depends(owne
 def resume_delete(item_id: int, version: int = Query(ge=1), db: Session = Depends(get_db), student=Depends(owner)):
     item = owned(db, models.ResumeWorkspace, item_id, student); check_version(item, version)
     db.delete(item); db.commit()
+    return {'deleted': True}
+
+
+@router.delete('/workspace/session-data')
+def clear_session_data(db: Session = Depends(get_db), student=Depends(owner)):
+    """Remove private uploads and derived analysis when a student signs out."""
+    db.execute(delete(models.ResumeWorkspace).where(models.ResumeWorkspace.student_pk == student.id))
+    db.execute(delete(models.LinkedInAuthorization).where(models.LinkedInAuthorization.student_pk == student.id))
+    db.execute(delete(models.LinkedInPublicLookup).where(models.LinkedInPublicLookup.student_pk == student.id))
+    db.execute(delete(models.LinkedInProfile).where(models.LinkedInProfile.student_pk == student.id))
+    db.execute(delete(models.RoadmapItem).where(models.RoadmapItem.student_pk == student.id))
+    db.execute(delete(models.Analysis).where(models.Analysis.student_pk == student.id))
+    db.commit()
     return {'deleted': True}
 
 

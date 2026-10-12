@@ -1,7 +1,24 @@
 import { Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { ui } from '@/components/career-ui';
+import { Details, ui } from '@/components/career-ui';
 import { design as d } from '@/constants/design';
+import type { AnalysisOut } from '@/types/contracts';
+
+export function SkillGapChart({ gaps }: { gaps: AnalysisOut['gaps'] }) {
+  return <View style={{ gap: 24 }}>{gaps.map(gap => <View key={gap.skill.id} style={{ gap: 12 }}>
+    <View style={[ui.row, { justifyContent: 'space-between' }]}>
+      <Text style={[ui.body, { flex: 1, color: d.text, fontWeight: '500' }]}>{gap.skill.canonical_name}</Text>
+      <Text style={ui.body}>{gap.priority.toUpperCase()}</Text>
+    </View>
+    {([{ label: 'Current', value: gap.current_level, color: d.muted }, { label: 'Target', value: gap.required_level, color: d.accent }]).map(item => <View key={item.label} style={{ gap: 6 }}>
+      <View style={[ui.row, { justifyContent: 'space-between' }]}><Text style={ui.body}>{item.label}</Text><Text style={ui.body}>{item.value === null ? 'Unknown' : `${item.value}/5`}</Text></View>
+      <View accessibilityRole="progressbar" accessibilityLabel={`${gap.skill.canonical_name} ${item.label.toLowerCase()}`} accessibilityValue={item.value === null ? { text: 'Unknown' } : { min: 0, max: 5, now: item.value }} style={{ height: 5, borderRadius: 3, backgroundColor: d.border, overflow: 'hidden' }}>
+        {item.value !== null && <View style={{ height: 5, width: `${Math.max(0, Math.min(100, item.value / 5 * 100))}%`, backgroundColor: item.color }} />}
+      </View>
+    </View>)}
+    {!!gap.rationale && <Details label="Details"><Text style={ui.body}>{gap.rationale}</Text></Details>}
+  </View>)}</View>;
+}
 
 export function StatStrip({ items }: { items: { label: string; value: string | number }[] }) {
   return <View style={[ui.row, { gap: 24 }]}>{items.map(item => <View key={item.label} style={{ flex: 1, minWidth: 100, gap: 6 }}>

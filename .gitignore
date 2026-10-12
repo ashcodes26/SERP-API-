@@ -10,6 +10,7 @@ venv/
 node_modules/
 .expo/
 dist/
+dist-placement/
 .DS_Store
 mobile/.preview-chrome/
 mobile/.market-browser/
@@ -18,3 +19,4 @@ docs/.workspace-downloads/
 mobile/expo-env.d.ts
 *.tsbuildinfo
 backend/models/
+backend/.runtime/

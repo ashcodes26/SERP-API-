@@ -279,3 +279,154 @@ class RoadmapTask(Base):
     updated_at: Mapped[datetime] = mapped_column(default=_now)
     completed_at: Mapped[datetime | None]
     version: Mapped[int] = mapped_column(default=1)
+
+
+class Account(Base):
+    __tablename__ = 'accounts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(300))
+    role: Mapped[str] = mapped_column(String(16), default='student')
+    student_pk: Mapped[int | None] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), unique=True)
+    active: Mapped[bool] = mapped_column(default=True)
+    session_version: Mapped[int] = mapped_column(default=1)
+
+
+class FacultyScope(Base):
+    __tablename__ = 'faculty_scopes'
+    admin_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'), primary_key=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+
+
+class Cohort(Base):
+    __tablename__ = 'placement_cohorts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    department: Mapped[str] = mapped_column(String(120))
+    batch: Mapped[str] = mapped_column(String(40))
+    section: Mapped[str] = mapped_column(String(40))
+
+
+class CohortMember(Base):
+    __tablename__ = 'placement_cohort_members'
+    cohort_id: Mapped[int] = mapped_column(ForeignKey('placement_cohorts.id', ondelete='CASCADE'), primary_key=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+
+
+class StudentPlacementMeta(Base):
+    __tablename__ = 'student_placement_meta'
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), primary_key=True)
+    batch: Mapped[str | None] = mapped_column(String(40))
+    section: Mapped[str | None] = mapped_column(String(40))
+
+
+class ImportAccess(Base):
+    __tablename__ = 'placement_import_access'
+    import_id: Mapped[int] = mapped_column(ForeignKey('import_jobs.id', ondelete='CASCADE'), primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'), index=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey('placement_cohorts.id', ondelete='CASCADE'))
+
+
+class ResumeRevision(Base):
+    __tablename__ = 'resume_revisions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    __table_args__ = (UniqueConstraint('workspace_id', 'version'),)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey('resume_workspaces.id', ondelete='CASCADE'), index=True)
+    version: Mapped[int]
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class FacultyResumeReview(Base):
+    __tablename__ = 'faculty_resume_reviews'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'), index=True)
+    revision_id: Mapped[int] = mapped_column(ForeignKey('resume_revisions.id', ondelete='CASCADE'))
+    status: Mapped[str] = mapped_column(String(24), default='submitted')
+    shared: Mapped[bool] = mapped_column(default=True)
+    suggestions: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class FacultyReviewFeedback(Base):
+    __tablename__ = 'faculty_review_feedback'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey('faculty_resume_reviews.id', ondelete='CASCADE'), index=True)
+    status: Mapped[str] = mapped_column(String(24))
+    feedback: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class PlacementDrive(Base):
+    __tablename__ = 'placement_drives'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey('accounts.id', ondelete='CASCADE'), index=True)
+    cohort_id: Mapped[int] = mapped_column(ForeignKey('placement_cohorts.id', ondelete='CASCADE'))
+    company: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    deadline: Mapped[date]
+    eligibility: Mapped[dict] = mapped_column(JSON, default=dict)
+    application_link: Mapped[str] = mapped_column(String(2000))
+    version: Mapped[int] = mapped_column(default=1)
+
+
+class PlacementApplication(Base):
+    __tablename__ = 'placement_applications'
+    __table_args__ = (UniqueConstraint('drive_id', 'student_pk'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    drive_id: Mapped[int] = mapped_column(ForeignKey('placement_drives.id', ondelete='CASCADE'), index=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    stage: Mapped[str] = mapped_column(String(24), default='applied')
+    eligibility_override: Mapped[bool | None]
+    review_reason: Mapped[str | None] = mapped_column(String(2000))
+    version: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class ApplicationEvent(Base):
+    __tablename__ = 'placement_application_events'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey('placement_applications.id', ondelete='CASCADE'), index=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey('accounts.id'))
+    stage: Mapped[str] = mapped_column(String(24))
+    note: Mapped[str] = mapped_column(String(2000), default='')
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class TrainingAssignment(Base):
+    __tablename__ = 'faculty_training_assignments'
+    __table_args__ = (UniqueConstraint('group_key', 'student_pk'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_key: Mapped[str] = mapped_column(String(64))
+    admin_id: Mapped[int] = mapped_column(ForeignKey('accounts.id'), index=True)
+    student_pk: Mapped[int] = mapped_column(ForeignKey('students.id', ondelete='CASCADE'), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(24))
+    instructions: Mapped[str] = mapped_column(Text, default='')
+    resource_url: Mapped[str | None] = mapped_column(String(2000))
+    skill_id: Mapped[int | None] = mapped_column(ForeignKey('skills.id'))
+    roadmap_item_id: Mapped[int | None] = mapped_column(ForeignKey('roadmap_items.id', ondelete='SET NULL'))
+    deadline: Mapped[date]
+    status: Mapped[str] = mapped_column(String(24), default='not_started')
+    evidence: Mapped[str] = mapped_column(Text, default='')
+    version: Mapped[int] = mapped_column(default=1)
+
+
+class AdminAudit(Base):
+    __tablename__ = 'admin_audit'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey('accounts.id'))
+    action: Mapped[str] = mapped_column(String(60))
+    object_type: Mapped[str] = mapped_column(String(40))
+    object_id: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class AuthRateLimit(Base):
+    __tablename__ = 'auth_rate_limits'
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(default=_now)
+    attempts: Mapped[int] = mapped_column(default=0)

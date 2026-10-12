@@ -79,6 +79,9 @@ def check_version(item, version):
 
 def change(db, item, version, values):
     check_version(item, version)
+    if isinstance(item, models.ResumeWorkspace):
+        from app.services.placement import snapshot
+        snapshot(db, item)
     model = type(item)
     changed = db.execute(update(model).where(model.id == item.id, model.student_pk == item.student_pk,
                         model.version == version).values(**values, version=version + 1, updated_at=now()),
@@ -88,6 +91,9 @@ def change(db, item, version, values):
         error(409, 'VERSION_CONFLICT', 'This item changed. Reload before retrying.')
     db.commit()
     db.refresh(item)
+    if isinstance(item, models.ResumeWorkspace):
+        snapshot(db, item)
+        db.commit()
     return item
 
 
@@ -120,7 +126,10 @@ def create_resume(db, student, text, consent, filename='pasted-resume.txt'):
         error(422, 'WORKSPACE_LIMIT', 'Delete an older resume before saving another (limit 20)')
     item = models.ResumeWorkspace(student_pk=student.id, filename=PurePath(filename.replace('\\', '/')).name[:200], original_text=text,
                                   revised_text=text, target={}, decisions={})
-    db.add(item); db.commit(); db.refresh(item)
+    db.add(item); db.flush()
+    from app.services.placement import snapshot
+    snapshot(db, item)
+    db.commit(); db.refresh(item)
     return item
 
 

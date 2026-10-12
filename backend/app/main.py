@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -15,14 +15,13 @@ from app.schemas import (AuthSessionOut, HealthOut, ResourceSearchIn, ResourceSe
                          JobOut, JobAnalyzeIn, SkillGapAnalyzeIn, AnalysisOut, RoadmapItemOut,
                          AssessmentSubmitIn, AssessmentOut, DashboardOut)
 from app import models
-from app.auth import Principal, current_principal, require_admin, allow_student, issue_token
-import hmac
+from app.auth import Principal, current_principal, allow_student, issue_token
 from app.services.analysis import analyze, get_job, get_profile
-from app.services import imports as import_service
-from app.services.retention import purge_expired_imports
 from app.services.demo_seed import seed_demo
 from app.services.serpapi import SearchFailure, search_resources
 from app.services.learning import create_roadmap, get_questions, submit_assessment, dashboard, latest_analysis
+from app.routes.accounts import router as accounts_router
+from app.routes.placement import router as placement_router
 from app.routes.jobs import router as jobs_router
 from app.routes.workspace import router as workspace_router
 from app.services.linkedin import PrivateLinkedInCallback
@@ -44,12 +43,14 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.include_router(accounts_router)
+    app.include_router(placement_router)
     app.include_router(jobs_router)
     app.include_router(workspace_router)
 
     @app.exception_handler(RequestValidationError)
     async def workspace_validation(request: Request, exc: RequestValidationError):
-        if request.url.path.startswith(('/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
+        if request.url.path.startswith(('/api/auth', '/api/admin', '/api/placement', '/api/import', '/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
             first = exc.errors()[0]
             field = '.'.join(str(part) for part in first['loc'] if part not in {'body', 'query'})
             # Never echo uploaded resume/profile input (including invalid Unicode).
@@ -60,7 +61,7 @@ def create_app() -> FastAPI:
     @app.middleware('http')
     async def private_workspace_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith(('/api/auth', '/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
+        if request.url.path.startswith('/api/') and request.url.path != '/api/health':
             response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -109,29 +110,18 @@ def create_app() -> FastAPI:
         if not student.is_synthetic:
             raise HTTPException(403, detail={'code': 'ACCOUNT_DISABLED',
                                             'message': 'Demo account is unavailable'})
-        return AuthSessionOut(access_token=issue_token(Principal('student', student.id)),
+        from app.services.accounts import demo_account
+        return AuthSessionOut(access_token=issue_token(demo_account(db, student)),
                               role='student', student_id=student.id)
-
-    @app.post("/api/auth/login", response_model=AuthSessionOut, tags=["auth"])
-    def login(payload: dict, db: Session = Depends(get_db)):
-        username, password = payload.get("username"), payload.get("password")
-        if not isinstance(username, str) or not isinstance(password, str):
-            raise HTTPException(422, detail="Username and password required")
-        cfg = get_settings()
-        if username == "admin" and cfg.admin_password and hmac.compare_digest(password, cfg.admin_password.get_secret_value()):
-            principal = Principal("admin")
-        elif username == "demo" and cfg.app_env in {"development", "test"} and cfg.demo_password and hmac.compare_digest(password, cfg.demo_password.get_secret_value()):
-            student, _ = seed_demo(db)
-            principal = Principal("student", student.id)
-        else:
-            raise HTTPException(401, detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"})
-        return {"access_token": issue_token(principal), "token_type": "bearer", "expires_in": 3600,
-                "role": principal.role, "student_id": principal.student_id}
 
     @app.post("/api/demo/seed", tags=["demo"])
     def demo_seed(db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
         if get_settings().app_env not in {"development", "test"}:
             raise HTTPException(403, detail="Demo seeding disabled")
+        if principal.role == 'student':
+            existing = db.get(models.Student, principal.student_id)
+            if not existing or existing.student_id != 'AIMORA-DEMO-001':
+                raise HTTPException(403, detail={'code': 'DEMO_ONLY', 'message': 'Use your own student journey'})
         student, role = seed_demo(db)
         allow_student(principal, student.id)
         return {"student_id": student.id, "job_id": role.id, "synthetic": True}
@@ -205,67 +195,6 @@ def create_app() -> FastAPI:
         if student is None:
             raise HTTPException(404, detail={"code": "STUDENT_NOT_FOUND", "message": "Student not found"})
         return dashboard(db, student)
-
-    def demo_import_only(db: Session = Depends(get_db), principal: Principal = Depends(require_admin)):
-        if get_settings().app_env.lower() not in {"development", "test"}:
-            raise HTTPException(403, detail={"code": "IMPORT_DISABLED", "message": "Imports require authenticated admin access outside development"})
-
-        purge_expired_imports(db, get_settings().import_retention_hours)
-
-    @app.post("/api/import/upload", tags=["import"])
-    async def import_upload(file: UploadFile = File(...), db: Session = Depends(get_db), access: None = Depends(demo_import_only)):
-        if not file.filename or not file.filename.lower().endswith((".csv", ".xlsx")):
-            raise HTTPException(422, detail={"code": "INVALID_FILE", "message": "Upload CSV or XLSX"})
-        limit = get_settings().max_upload_mb * 1024 * 1024
-        content = await file.read(limit + 1)
-        await file.close()
-        if len(content) > limit:
-            raise HTTPException(413, detail={"code": "FILE_TOO_LARGE", "message": "Upload exceeds configured size limit"})
-        try:
-            job, headers = import_service.upload(db, file.filename, content)
-            return {"job_id": job.id, "headers": headers, "suggested_mapping": job.field_mapping, "total_rows": job.total_rows}
-        except ValueError as exc:
-            raise HTTPException(422, detail={"code": "INVALID_FILE", "message": str(exc)}) from exc
-
-    def find_import(db: Session, job_id: int):
-        job = db.get(models.ImportJob, job_id)
-        if job is None:
-            raise HTTPException(404, detail={"code": "IMPORT_NOT_FOUND", "message": "Import job not found"})
-        return job
-
-    @app.post("/api/import/preview", tags=["import"])
-    def import_preview(payload: dict, db: Session = Depends(get_db), access: None = Depends(demo_import_only)):
-        job_id, mapping = payload.get("job_id"), payload.get("mapping")
-        if not isinstance(job_id, int) or not isinstance(mapping, dict):
-            raise HTTPException(422, detail={"code": "INVALID_MAPPING", "message": "job_id and mapping required"})
-        try:
-            return import_service.preview(db, find_import(db, job_id), mapping)
-        except ValueError as exc:
-            raise HTTPException(422, detail={"code": "INVALID_MAPPING", "message": str(exc)}) from exc
-
-    @app.post("/api/import/confirm", tags=["import"])
-    def import_confirm(payload: dict, db: Session = Depends(get_db), access: None = Depends(demo_import_only)):
-        if not isinstance(payload.get("job_id"), int) or not isinstance(payload.get("update_duplicates", False), bool):
-            raise HTTPException(422, detail="Invalid import confirmation")
-        try:
-            return import_service.confirm(db, find_import(db, payload["job_id"]), payload.get("update_duplicates", False))
-        except ValueError as exc:
-            raise HTTPException(409, detail={"code": "INVALID_IMPORT_STATE", "message": str(exc)}) from exc
-
-    @app.get("/api/import/{job_id}", tags=["import"])
-    def import_status(job_id: int, db: Session = Depends(get_db), access: None = Depends(demo_import_only)):
-        return import_service.summary(db, find_import(db, job_id))
-
-    @app.get("/api/import/{job_id}/errors", tags=["import"])
-    def import_errors(job_id: int, db: Session = Depends(get_db), access: None = Depends(demo_import_only)):
-        return import_service.summary(db, find_import(db, job_id))["issues"]
-
-    @app.post("/api/import/{job_id}/retry", tags=["import"])
-    def import_retry(job_id: int, db: Session = Depends(get_db), access: None = Depends(demo_import_only)):
-        try:
-            return import_service.retry(db, find_import(db, job_id))
-        except ValueError as exc:
-            raise HTTPException(409, detail={"code": "INVALID_IMPORT_STATE", "message": str(exc)}) from exc
 
     return app
 

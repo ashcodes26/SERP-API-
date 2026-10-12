@@ -47,6 +47,27 @@ class AuthSessionOut(BaseModel):
     student_id: int | None
 
 
+class AccountOut(BaseModel):
+    account_id: int
+    username: str
+    role: Literal['admin', 'student']
+    student_id: int | None
+
+
+class LoginIn(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=False)
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class SignupIn(LoginIn):
+    password: str = Field(min_length=12, max_length=256)
+    student_id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=200)
+    email: EmailStr
+    department: str = Field(min_length=1, max_length=120)
+
+
 # ---- Students & evidence -------------------------------------------------
 class StudentIn(BaseModel):
     student_id: str = Field(min_length=1, max_length=64)
@@ -839,3 +860,248 @@ class TaskListOut(BaseModel):
     remaining: int
     completion_percentage: float | None
     milestone_counts: dict[int, dict[str, int]]
+
+
+# Placement contracts. No readiness value is used to infer placement outcomes.
+class PlacementInput(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+
+class ImportPreviewIn(PlacementInput):
+    job_id: int = Field(gt=0)
+    mapping: dict[str, str]
+
+
+class ImportConfirmIn(PlacementInput):
+    job_id: int = Field(gt=0)
+    update_duplicates: bool = False
+
+
+class CohortIn(PlacementInput):
+    name: str = Field(min_length=1, max_length=120)
+    department: str = Field(min_length=1, max_length=120)
+    batch: str = Field(min_length=1, max_length=40)
+    section: str = Field(min_length=1, max_length=40)
+
+
+class CohortOut(CohortIn, ORM):
+    id: int
+    students: int = 0
+
+
+class PlacementStudentOut(BaseModel):
+    id: int
+    student_id: str
+    name: str
+    department: str | None
+    batch: str | None
+    section: str | None
+    profile_completion: float
+    resume_status: str
+    assessments_completed: int
+    roadmap_completed: int
+    roadmap_total: int
+    training_completed: int
+    training_total: int
+    overdue: int
+    applications: int
+    offers: int
+    follow_up: list[str]
+
+
+class PlacementStudentsOut(BaseModel):
+    items: list[PlacementStudentOut]
+    total: int
+    page: int
+    page_size: int
+
+
+class PlacementDashboardOut(BaseModel):
+    metrics: dict[str, int | float | None]
+    definitions: dict[str, str]
+    follow_up: list[PlacementStudentOut]
+
+
+class ReviewShareIn(PlacementInput):
+    workspace_id: int = Field(gt=0)
+    version: int = Field(ge=1)
+    admin_id: int = Field(gt=0)
+    share_suggestions: bool = False
+    consent: bool
+
+
+class ReviewDecisionIn(PlacementInput):
+    status: Literal['changes_requested', 'approved']
+    feedback: str = Field(min_length=1, max_length=4000)
+
+
+class ReviewFeedbackOut(ORM):
+    id: int
+    status: str
+    feedback: str
+    created_at: datetime
+
+
+class FacultyReviewOut(BaseModel):
+    id: int
+    student_id: int
+    admin_id: int
+    workspace_id: int
+    version: int
+    text: str
+    status: Literal['submitted', 'changes_requested', 'approved']
+    shared: bool
+    suggestions: ResumeAnalysisOut | None
+    feedback: list[ReviewFeedbackOut]
+    created_at: datetime
+    disclaimer: str = 'Faculty approval is a review decision, not external verification of resume facts.'
+
+
+class ResumeRevisionOut(ORM):
+    id: int
+    workspace_id: int
+    version: int
+    text: str
+    created_at: datetime
+
+
+class EligibilityIn(PlacementInput):
+    min_cgpa: float | None = Field(default=None, ge=0, le=10)
+    departments: list[str] = Field(default_factory=list, max_length=30)
+    graduation_year: int | None = Field(default=None, ge=2000, le=2100)
+
+
+class DriveIn(PlacementInput):
+    cohort_id: int = Field(gt=0)
+    company: str = Field(min_length=1, max_length=200)
+    role: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=8000)
+    deadline: date
+    eligibility: EligibilityIn = Field(default_factory=EligibilityIn)
+    application_link: HttpUrl
+
+
+class DriveUpdateIn(DriveIn):
+    version: int = Field(ge=1)
+
+
+class EligibilityOut(BaseModel):
+    status: Literal['eligible', 'not_eligible', 'needs_review']
+    reasons: list[str]
+
+
+class DriveOut(ORM):
+    id: int
+    cohort_id: int
+    company: str
+    role: str
+    description: str
+    deadline: date
+    eligibility: EligibilityIn
+    application_link: str
+    version: int
+    decision: EligibilityOut | None = None
+
+
+ApplicationStage = Literal['applied', 'shortlisted', 'interview', 'offered', 'rejected', 'withdrawn']
+
+
+class ApplicationUpdateIn(PlacementInput):
+    version: int = Field(ge=1)
+    stage: ApplicationStage
+    note: str = Field(default='', max_length=2000)
+    eligibility_override: bool | None = None
+    review_reason: str | None = Field(default=None, min_length=1, max_length=2000)
+
+
+class ApplicationEventOut(ORM):
+    stage: ApplicationStage
+    note: str
+    created_at: datetime
+
+
+class ApplicationOut(ORM):
+    id: int
+    drive_id: int
+    student_pk: int
+    stage: ApplicationStage
+    eligibility_override: bool | None
+    review_reason: str | None
+    version: int
+    updated_at: datetime
+    history: list[ApplicationEventOut] = []
+
+
+class TrainingIn(PlacementInput):
+    student_ids: list[int] = Field(default_factory=list, max_length=5000)
+    cohort_id: int | None = Field(default=None, gt=0)
+    title: str = Field(min_length=1, max_length=200)
+    kind: Literal['resource', 'course', 'project', 'assessment']
+    instructions: str = Field(default='', max_length=4000)
+    resource_url: HttpUrl | None = None
+    skill_id: int | None = Field(default=None, gt=0)
+    roadmap_item_id: int | None = Field(default=None, gt=0)
+    deadline: date
+
+
+class TrainingProgressIn(PlacementInput):
+    version: int = Field(ge=1)
+    status: Literal['not_started', 'in_progress', 'completed']
+    evidence: str = Field(default='', max_length=4000)
+
+
+class TrainingOut(ORM):
+    id: int
+    student_pk: int
+    title: str
+    kind: str
+    instructions: str
+    resource_url: str | None
+    skill_id: int | None
+    roadmap_item_id: int | None
+    deadline: date
+    status: str
+    evidence: str
+    version: int
+
+
+class AssessmentSummaryOut(ORM):
+    id: int
+    skill_id: int
+    score: float
+    completed_at: datetime
+
+
+class PlacementDetailOut(BaseModel):
+    profile: ProfileOut
+    summary: PlacementStudentOut
+    assessments: list[AssessmentSummaryOut]
+    roadmap: list[RoadmapItemOut]
+    training: list[TrainingOut]
+    applications: list[ApplicationOut]
+    reviews: list[FacultyReviewOut]
+
+
+class BatchSkillOut(BaseModel):
+    skill: SkillOut
+    required_level: int | None
+    common_gap_count: int
+    known_count: int
+    mean_proficiency: float | None
+    assessed_count: int
+    mean_assessed_proficiency: float | None
+    missing_assessment_count: int
+    unknown_count: int
+    gap_student_ids: list[int]
+    unknown_student_ids: list[int]
+    assessed_student_ids: list[int]
+    missing_assessment_student_ids: list[int]
+
+
+class BatchGapOut(BaseModel):
+    cohort_id: int
+    job: JobOut
+    student_count: int
+    skills: list[BatchSkillOut]
+    source: str
+    disclaimer: str = READINESS_DISCLAIMER

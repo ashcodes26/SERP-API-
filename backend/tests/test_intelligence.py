@@ -63,6 +63,8 @@ def test_demo_seed_and_endpoints_use_real_database(tmp_path):
         with factory() as db:
             yield db
     app.dependency_overrides[get_db] = override
+    from app.auth import Principal, current_principal
+    app.dependency_overrides[current_principal] = lambda: Principal('admin', assigned_ids=(1, 99999))
     try:
         with TestClient(app) as client:
             seed1 = client.post('/api/demo/seed')

@@ -41,6 +41,8 @@ def database(tmp_path, monkeypatch):
         with factory() as db:
             yield db
     app.dependency_overrides[get_db] = override
+    from app.auth import Principal, current_principal
+    app.dependency_overrides[current_principal] = lambda: Principal('admin', assigned_ids=(1, 2))
     with factory() as db:
         yield db, factory
     app.dependency_overrides.clear()
@@ -204,6 +206,8 @@ def test_api_validation_authentication_ownership_and_insufficient_evidence(datab
         assert api.post(f'/api/jobs/{sample.jobs[0].id}/match', json={'student_id': ids['student_id']}).status_code == 422
         assert api.get('/api/jobs/999999').status_code == 404
         monkeypatch.setenv('APP_ENV', 'development')
+        from app.auth import current_principal
+        app.dependency_overrides.pop(current_principal, None)
         monkeypatch.setenv('AUTH_SIGNING_KEY', 's' * 48)
         monkeypatch.setenv('DEMO_PASSWORD', 'fixture-password')
         get_settings.cache_clear()

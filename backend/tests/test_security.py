@@ -19,6 +19,10 @@ def secure_client(monkeypatch, tmp_path):
     engine = make_engine(f'sqlite:///{tmp_path / "secure.db"}')
     init_db(engine)
     maker = sessionmaker(bind=engine, expire_on_commit=False)
+    from app.auth import hash_password
+    with maker() as db:
+        db.add(models.Account(username='admin', role='admin', password_hash=hash_password('admintest-password')))
+        db.commit()
     def override():
         with maker() as db:
             yield db
@@ -41,7 +45,7 @@ def test_unauthenticated_and_invalid_credentials(secure_client):
     assert client.get('/api/dashboard/1', headers={'Authorization': 'Bearer x.y'}).status_code == 401
 
 def test_role_boundaries_and_tampered_token(secure_client):
-    client, _ = secure_client
+    client, maker = secure_client
     student = login(client, 'demo', 'demotest-password').json()
     admin = login(client, 'admin', 'admintest-password').json()
     student_headers = {'Authorization': 'Bearer ' + student['access_token']}
@@ -52,18 +56,22 @@ def test_role_boundaries_and_tampered_token(secure_client):
     assert client.get(f'/api/profile/{own+100}', headers=student_headers).status_code == 403
     assert client.post('/api/skill-gap/analyze', json={'student_id': own+100, 'job_id': 1}, headers=student_headers).status_code == 403
     assert client.get('/api/import/1', headers=student_headers).status_code == 403
+    assert client.get(f'/api/profile/{own}', headers=admin_headers).status_code == 403
+    with maker() as db:
+        admin_account = db.query(models.Account).filter_by(username='admin').one()
+        db.add(models.FacultyScope(admin_id=admin_account.id, student_pk=own)); db.commit()
     assert client.get(f'/api/profile/{own}', headers=admin_headers).status_code == 200
     tampered = student['access_token'][:-1] + ('a' if student['access_token'][-1] != 'a' else 'b')
     assert client.get(f'/api/profile/{own}', headers={'Authorization': 'Bearer ' + tampered}).status_code == 401
 
-def test_production_disables_demo_and_import(secure_client, monkeypatch):
+def test_production_disables_demo_but_scopes_imports(secure_client, monkeypatch):
     client, _ = secure_client
     token = login(client, 'admin', 'admintest-password').json()['access_token']
     monkeypatch.setenv('APP_ENV', 'production')
     get_settings.cache_clear()
     headers = {'Authorization': 'Bearer ' + token}
     assert client.post('/api/demo/seed', headers=headers).status_code == 403
-    assert client.get('/api/import/1', headers=headers).status_code == 403
+    assert client.get('/api/import/1', headers=headers).status_code == 404
     assert login(client, 'demo', 'demotest-password').status_code == 401
 
 

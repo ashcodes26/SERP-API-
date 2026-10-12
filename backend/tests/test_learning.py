@@ -5,6 +5,7 @@ from app.db import get_db, init_db, make_engine
 from app.main import app
 from app import models
 from app.services.learning import get_questions
+from app.auth import Principal, current_principal
 
 @pytest.fixture
 def client(tmp_path):
@@ -15,6 +16,7 @@ def client(tmp_path):
         with factory() as session:
             yield session
     app.dependency_overrides[get_db] = dependency
+    app.dependency_overrides[current_principal] = lambda: Principal('admin', assigned_ids=(1, 99999, 999999))
     with TestClient(app) as api:
         yield api, factory
     app.dependency_overrides.clear()

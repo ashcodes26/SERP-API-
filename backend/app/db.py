@@ -13,7 +13,7 @@ class Base(DeclarativeBase):
 def make_engine(url: str | None = None) -> Engine:
     url = url or get_settings().database_url
     kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
-    engine = create_engine(url, **kwargs)
+    engine = create_engine(url, hide_parameters=True, **kwargs)
     if url.startswith("sqlite"):
 
         @event.listens_for(engine, "connect")
@@ -31,7 +31,11 @@ def init_db(target: Engine | None = None) -> None:
     """Create all tables (MVP uses create_all; no Alembic until the schema stabilises)."""
     from app import models  # noqa: F401  (register tables)
 
-    Base.metadata.create_all(target or engine)
+    bound = target or engine
+    Base.metadata.create_all(bound)
+    from app.services.accounts import backfill_accounts
+    with Session(bound) as db:
+        backfill_accounts(db)
 
 
 def get_db() -> Iterator[Session]:

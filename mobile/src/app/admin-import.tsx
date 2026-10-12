@@ -1,35 +1,45 @@
 import { BarChart, StatStrip } from '@/components/analytics';
 import { design as d } from '@/constants/design';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { placementApi } from '@/api/placement';
+import { Choices } from '@/components/placement-ui';
+import type { CohortOut } from '@/types/contracts';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importApi, type ImportSummary, type ImportUpload } from '@/api/client';
 
-const fields = ['student_id', 'name', 'first_name', 'last_name', 'email', 'department', 'program', 'specialization', 'semester', 'cgpa', 'graduation_year'];
+const fields = ['student_id', 'name', 'first_name', 'last_name', 'email', 'department', 'program', 'specialization', 'semester', 'cgpa', 'graduation_year', 'batch', 'section'];
 export default function AdminImport() {
+  const [cohorts, setCohorts] = useState<CohortOut[]>([]);
+  const [cohortId, setCohortId] = useState<number | null>(null);
   const [uploaded, setUploaded] = useState<ImportUpload | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ImportSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+  useFocusEffect(useCallback(() => { placementApi.cohorts().then(setCohorts).catch(err => setError(err instanceof Error ? err.message : 'Could not load cohorts')); }, []));
   async function perform(action: () => Promise<void>) {
     setBusy(true); setError('');
     try { await action(); } catch (e) { setError(e instanceof Error ? e.message : 'Import request failed'); }
     finally { setBusy(false); }
   }
   const pick = () => perform(async () => {
+    if (!cohortId) { setError('Select a cohort before uploading.'); return; }
     const selection = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream'], copyToCacheDirectory: true });
     if (selection.canceled) return;
     const asset = selection.assets[0];
     if (!/\.(csv|xlsx)$/i.test(asset.name)) { setError('Choose a .csv or .xlsx file.'); return; }
     setUploaded(null); setMapping({}); setResult(null); setEditing(null);
-    const response = await importApi.upload(asset);
+    const response = await importApi.upload(asset, cohortId);
     setUploaded(response); setMapping(response.suggested_mapping);
   });
   return <SafeAreaView edges={['bottom']} style={styles.screen}><ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.kicker}>ADMIN</Text>
+    <Choices label="Import into assigned cohort" values={cohorts.map(x => ({ value: x.id, label: x.name }))} selected={cohortId} onSelect={id => { setCohortId(id); setUploaded(null); setResult(null); }}/>
+    {!cohorts.length && <Text style={styles.note}>Create a cohort in the faculty dashboard first. Imports never grant access to an existing unassigned student.</Text>}
     <Text style={styles.title}>Student import</Text><View style={styles.steps}><Text style={styles.step}>01 / Upload</Text><Text style={styles.step}>02 / Map columns</Text><Text style={styles.step}>03 / Review & import</Text></View>
 
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={pick} style={[uploaded ? styles.secondary : styles.primary, busy && { opacity: 0.5 }]}><Text style={uploaded ? styles.field : styles.primaryText}>{uploaded ? 'Choose another file' : 'Choose CSV / XLSX'}</Text></Pressable>
@@ -45,7 +55,7 @@ export default function AdminImport() {
       {result.issues.slice(0, 100).map((issue, index) => <Text style={styles.issue} key={`${issue.row_number}-${issue.field}-${index}`}>Row {issue.row_number}: {issue.issue_code} — {issue.message}</Text>)}
       {result.issues.length > 100 && <Text style={styles.note}>Showing first 100 issues of {result.issues.length}.</Text>}
       {result.job.status === 'validated' && <><Pressable accessibilityRole="button" disabled={busy} style={styles.primary} onPress={() => perform(async () => setResult(await importApi.confirm(result.job.id)))}><Text style={styles.primaryText}>Import valid rows (skip duplicates)</Text></Pressable>
-        <Pressable accessibilityRole="button" disabled={busy} style={styles.secondary} onPress={() => perform(async () => setResult(await importApi.confirm(result.job.id, true)))}><Text style={styles.field}>Import and update matching synthetic records</Text></Pressable></>}
+        <Pressable accessibilityRole="button" disabled={busy} style={styles.secondary} onPress={() => perform(async () => setResult(await importApi.confirm(result.job.id, true)))}><Text style={styles.field}>Import and update matching assigned records</Text></Pressable></>}
       {result.job.status.startsWith('completed') && <Pressable accessibilityRole="button" disabled={busy} style={styles.secondary} onPress={() => perform(async () => setResult(await importApi.retry(result.job.id)))}><Text style={styles.field}>Revalidate remaining rows</Text></Pressable>}
     </View>}
     {busy && <ActivityIndicator accessibilityLabel="Processing import" size="large" color={d.accent}/>}

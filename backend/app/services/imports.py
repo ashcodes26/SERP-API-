@@ -9,9 +9,9 @@ import pandas as pd
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
-from app.models import Student, ImportJob, ImportRowIssue, ImportStagedRow
+from app.models import Student, ImportJob, ImportRowIssue, ImportStagedRow, FacultyScope, CohortMember, StudentPlacementMeta
 
-FIELDS = {"student_id", "name", "first_name", "last_name", "email", "department", "program", "specialization", "semester", "cgpa", "graduation_year"}
+FIELDS = {"student_id", "name", "first_name", "last_name", "email", "department", "program", "specialization", "semester", "cgpa", "graduation_year", "batch", "section"}
 ALIASES = {
     "reg no": "student_id", "register number": "student_id", "roll number": "student_id", "student id": "student_id",
     "full name": "name", "student name": "name", "first name": "first_name", "last name": "last_name", "surname": "last_name",
@@ -66,6 +66,8 @@ def upload(db: Session, filename: str, content: bytes) -> tuple[ImportJob, list[
 def _normalize(row: dict, mapping: dict) -> tuple[dict, list[tuple[str, str, str]]]:
     data = {target: str(row.get(source, "")).strip() for source, target in mapping.items() if target in FIELDS}
     issues = []
+    if data.get('email'):
+        data['email'] = data['email'].casefold()
     if not data.get("name"):
         data["name"] = " ".join(part for part in (data.get("first_name", ""), data.get("last_name", "")) if part)
     for field in ("student_id", "name", "email"):
@@ -75,7 +77,10 @@ def _normalize(row: dict, mapping: dict) -> tuple[dict, list[tuple[str, str, str
         issues.append(("program", "REQUIRED", "Program or department is required"))
     if data.get("email") and not EMAIL_RE.fullmatch(data["email"]):
         issues.append(("email", "INVALID_EMAIL", "Invalid email address"))
-    for field, low, high in (("cgpa", 0, 10), ("semester", 1, 16), ("graduation_year", 2000, 2200)):
+    for field, limit in (('student_id', 64), ('name', 200), ('email', 320), ('department', 120), ('program', 120), ('specialization', 120), ('batch', 40), ('section', 40)):
+        if len(data.get(field, '')) > limit:
+            issues.append((field, 'TOO_LONG', f'{field} exceeds {limit} characters'))
+    for field, low, high in (("cgpa", 0, 10), ("semester", 1, 12), ("graduation_year", 2000, 2100)):
         if data.get(field):
             try:
                 value = float(data[field]) if field == "cgpa" else int(data[field])
@@ -133,7 +138,7 @@ def summary(db: Session, job: ImportJob) -> dict:
                         "severity": item.severity, "message": item.message} for item in db.scalars(select(ImportRowIssue).where(ImportRowIssue.import_job_id == job.id).order_by(ImportRowIssue.row_number)).all()]}
 
 
-def confirm(db: Session, job: ImportJob, update_duplicates: bool = False) -> dict:
+def confirm(db: Session, job: ImportJob, update_duplicates: bool = False, *, admin_id=None, cohort=None, allowed_ids=()) -> dict:
     if job.status != "validated":
         raise ValueError("Preview and validate before confirming")
     rows = db.scalars(select(ImportStagedRow).where(ImportStagedRow.import_job_id == job.id).order_by(ImportStagedRow.row_number)).all()
@@ -148,15 +153,28 @@ def confirm(db: Session, job: ImportJob, update_duplicates: bool = False) -> dic
             continue
         existing = db.scalar(select(Student).where(or_(Student.student_id == data["student_id"], Student.email == data["email"])))
         if existing:
-            if not update_duplicates or existing.student_id != data["student_id"] or existing.email.lower() != data["email"].lower() or not existing.is_synthetic:
+            if not update_duplicates or existing.student_id != data["student_id"] or existing.email.lower() != data["email"].lower() or (existing.id not in allowed_ids if admin_id else not existing.is_synthetic):
                 continue
             student = existing
         else:
-            student = Student(student_id=data["student_id"], email=data["email"], name=data["name"], is_synthetic=True)
+            student = Student(student_id=data["student_id"], email=data["email"], name=data["name"], is_synthetic=admin_id is None)
             db.add(student)
         for field in ("name", "department", "program", "specialization", "semester", "cgpa", "graduation_year"):
             if field in data and data[field] != "":
                 setattr(student, field, data[field])
+        if admin_id and cohort:
+            if not student.department:
+                student.department = cohort.department
+            db.flush()
+            if not db.get(FacultyScope, (admin_id, student.id)):
+                db.add(FacultyScope(admin_id=admin_id, student_pk=student.id))
+            if not db.get(CohortMember, (cohort.id, student.id)):
+                db.add(CohortMember(cohort_id=cohort.id, student_pk=student.id))
+            meta = db.get(StudentPlacementMeta, student.id)
+            if not meta:
+                meta = StudentPlacementMeta(student_pk=student.id)
+                db.add(meta)
+            meta.batch, meta.section = cohort.batch, cohort.section
         row.status = "imported"
         imported += 1
     job.imported_rows += imported

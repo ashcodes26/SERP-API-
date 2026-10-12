@@ -20,7 +20,7 @@ backend/.venv/Scripts/python.exe -m pip install -r requirements.txt
 Copy-Item backend/.env.example backend/.env
 ```
 
-Set independent random values for `AUTH_SIGNING_KEY`, `ADMIN_PASSWORD`, and `DEMO_PASSWORD` in `backend/.env`. Leave `APP_ENV=development` for the local demo. Add `SERPAPI_API_KEY` there to enable live search; otherwise roadmap resources use clearly labelled curated fallback. All credentials stay backend-only.
+Set a random `AUTH_SIGNING_KEY` (at least 32 characters) in `backend/.env`. Faculty accounts use a privately prompted password through `python -m scripts.manage_accounts create-admin --username placement-faculty` from `backend/`; `ADMIN_PASSWORD` is retired. `DEMO_PASSWORD` is optional for the development-only synthetic demo. Leave `APP_ENV=development` for the local demo. Add `SERPAPI_API_KEY` there to enable live search; otherwise roadmap resources use clearly labelled curated fallback. All credentials stay backend-only.
 
 ```powershell
 cd backend
@@ -38,9 +38,9 @@ Copy-Item .env.example .env
 npx.cmd expo start --web --port 8081
 ```
 
-Set `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000` for local web development. Open http://localhost:8081. With `DEMO_LOGIN_BYPASS=true` in `backend/.env`, the app opens directly into the existing demo student's workspace. This temporary mode requires `APP_ENV=development` and loopback backend requests; it issues a normal student session and preserves existing saved revisions. Tokens are held in memory. The signing key is still required.
+Set `EXPO_PUBLIC_API_URL=http://127.0.0.1:8000` for local web development. Open http://localhost:8081. With `DEMO_LOGIN_BYPASS=true` in `backend/.env`, the app opens directly into the existing demo student's workspace. This temporary mode requires `APP_ENV=development` and loopback backend requests; it issues a normal student session and preserves existing saved revisions. Tokens are restored from tab-scoped web session storage or native SecureStore, then validated through `/api/auth/me`. The signing key is still required.
 
-To restore the login page later, set `DEMO_LOGIN_BYPASS=false`, restart the backend, and reload the app. Sign in as `demo` using the backend's `DEMO_PASSWORD`, or `admin` using `ADMIN_PASSWORD` for CSV/XLSX imports. Production always requires login, regardless of the bypass flag.
+To restore the login page later, set `DEMO_LOGIN_BYPASS=false`, restart the backend, and reload the app. Sign in as `demo` using the backend's `DEMO_PASSWORD`, or a provisioned faculty account for the faculty dashboard and scoped CSV/XLSX imports. Production always requires login, regardless of the bypass flag.
 
 For a physical phone, use the computer's LAN IP in `EXPO_PUBLIC_API_URL` and bind FastAPI to `0.0.0.0` on a trusted LAN.
 
@@ -154,13 +154,19 @@ because no browser surface was available. Existing upload/revision/approval/rest
 and TXT/DOCX export flows are covered by backend tests. See the historical reports
 in `docs/` for earlier feature work; their retired local-analysis setup no longer applies.
 
+## Placement faculty workspace
+
+Database accounts, shared login and role-based session routing, explicit faculty student/cohort scopes, real dashboard metrics, searchable/paginated student management, cohort skill gaps, shared saved resume revision reviews, placement drives/application histories, faculty training, and scoped CSV reports are implemented. Public signup always creates students. Existing student data is preserved by an additive startup upgrade; imported/legacy student accounts need a locally prompted password before login.
+
+See [setup, initial faculty creation, access grants, migration behavior and verification](docs/PLACEMENT_FACULTY_DASHBOARD.md). Faculty starts with no student access. Set `DEMO_LOGIN_BYPASS=false` for the shared login page. The faculty flows require no AI-provider key, and faculty page loads never invoke Gemini. Browser acceptance is still unverified because this session had no available browser surface.
+
 ## Current scope
 
 New: **Skill demand** (`/market`) combines retained job-search samples into distinct-job rankings, role comparisons, and personal evidence/learning priorities. The Jobs resume panel accepts actual text PDF/DOCX/TXT uploads (1 MiB maximum). See [industry skill demand report](docs/INDUSTRY_SKILL_DEMAND.md) for calculations, endpoints, component adaptations, setup, and checks.
 
 Implemented: synthetic profile, seeded and retrieved-job comparison, deterministic skill gaps/readiness, authenticated SerpApi job discovery with cache and bounded pagination, retrieved-page skill insights, pasted-text resume advice, progress-preserving role roadmaps, SQL/Python/Docker quizzes, dashboard, prototype authentication/ownership checks, and development-only admin CSV/XLSX imports. Open **Jobs & insights** after signing in. Live job discovery requires `SERPAPI_API_KEY`; without it, the UI displays an explicit configuration error.
 
-Resume and LinkedIn import supports text PDFs, DOCX and UTF-8 TXT. Resume Enhancer accepts a pasted job description without a provider key, alongside real retrieved listings. Resume analysis requires Gemini configuration and Google consent; storage, manual revision and export work locally. Still outside this prototype: official ATS evaluation, SWOT generation, interview practice, production student accounts, full offline mobile operation and production deployment hardening. Readiness is informational, never an employment probability. Use synthetic records only.
+Resume and LinkedIn import supports text PDFs, DOCX and UTF-8 TXT. Resume Enhancer accepts a pasted job description without a provider key, alongside real retrieved listings. Resume analysis requires Gemini configuration and Google consent; storage, manual revision and export work locally. Still outside this prototype: official ATS evaluation, SWOT generation, interview practice, full offline mobile operation and production deployment hardening. Readiness is informational, never an employment probability. Use synthetic records only.
 
 `.env` files, credentials, databases, virtual environments, installed dependencies, build output, and local browser profiles are excluded from Git. Commit `.env.example` files only.
 

@@ -62,10 +62,8 @@ export default function HomeScreen() {
   }, [run]));
 
   const start = () => void run(async () => {
-    const selected = await careerApi.seed();
-    if (!selected.synthetic) throw new Error('Expected a synthetic demo student.');
+    const selected = await careerApi.journey();
     const [student, job] = await Promise.all([careerApi.profile(selected.student_id), careerApi.role(selected.job_id)]);
-    if (!student.student.is_synthetic) throw new Error('Non-demo student detected; refusing to enter demo.');
     setIds(selected); setProfile(student); setRole(job); setAnalysis(null); setRoadmap([]); setQuiz(null); setDashboard(null); setLastScore(null); setStage('profile');
   });
   const analyze = () => { if (!ids) return; void run(async () => {
@@ -88,7 +86,7 @@ export default function HomeScreen() {
   const refresh = () => { if (!ids) return; void run(async () => { setDashboard(await careerApi.dashboard(ids.student_id)); setStage('result'); }); };
   const reset = () => { setError(null); setRetry(null); setStage('welcome'); setIds(null); setProfile(null); setRole(null); setAnalysis(null); setRoadmap([]); setQuiz(null); setDashboard(null); };
   const inputSaved = async (saved: ProfileOut) => {
-    const selected = ids ?? await careerApi.seed();
+    const selected = ids ?? await careerApi.journey();
     const targetRole = role ?? await careerApi.role(selected.job_id);
     setIds({ student_id: saved.student.id, job_id: selected.job_id }); setRole(targetRole); setProfile(saved);
     setAnalysis(null); setRoadmap([]); setQuiz(null); setDashboard(null); setLastScore(null); setStage('profile');
@@ -96,7 +94,7 @@ export default function HomeScreen() {
   const quizSkills = analysis?.gaps.filter(g => ['SQL','Python','Docker'].includes(g.skill.canonical_name)) ?? [];
 
   return <SafeAreaView edges={['bottom']} style={s.root}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
-    <View style={s.top}><Text style={s.brand}>Skillup <Text style={s.brandDot}>●</Text></Text><Text style={s.mode}>SYNTHETIC WORKSPACE</Text></View>
+    <View style={s.top}><Text style={s.brand}>Skillup <Text style={s.brandDot}>●</Text></Text><Text style={s.mode}>STUDENT WORKSPACE</Text></View>
     <View style={s.steps}>{(['profile', 'analysis', 'roadmap', 'quiz', 'result'] as const).map((step, index) => {
       const available = step === 'profile' ? !!profile : step === 'quiz' ? !!quiz : !!analysis;
       return <Pressable key={step} accessibilityRole="button" accessibilityState={{ selected: stage === step, disabled: busy || !available }} disabled={busy || !available} onPress={() => { if (step === 'roadmap') loadRoadmap(); else if (step === 'result') refresh(); else setStage(step); }} style={[s.step, stage === step && s.stepActive, !available && { opacity: 0.5 }]}><Text style={[s.stepText, stage === step && s.stepTextActive]}>{String(index + 1).padStart(2, '0')} / {step === 'result' ? 'Progress' : step === 'quiz' ? 'Practice' : step.charAt(0).toUpperCase() + step.slice(1)}</Text></Pressable>;
@@ -108,8 +106,8 @@ export default function HomeScreen() {
     {busy && <View style={s.loading}><ActivityIndicator size="large" color={accent}/><Text style={s.muted}>Syncing with Skillup…</Text></View>}
     {stage === 'input' && <JourneyInput onSaved={inputSaved} onCancel={() => setStage(profile ? 'profile' : 'welcome')} />}
     {stage !== 'input' && stage !== 'roadmap' && session.getStudentId() && <Action title={profile ? 'Update details' : 'Add details'} onPress={() => setStage('input')} disabled={busy} />}
-    {stage === 'welcome' && <><Panel><Text style={s.eyebrow}>YOUR LEARNING JOURNEY</Text><Text style={s.listText}>01   Profile</Text><Text style={s.listText}>02   Alignment</Text><Text style={s.listText}>03   Roadmap</Text><Text style={s.listText}>04   Practice</Text></Panel><Action title="Start demo →" onPress={start} disabled={busy}/></>}
-    {stage === 'profile' && profile && role && <><Panel><Text style={s.eyebrow}>STUDENT · SYNTHETIC</Text><Text style={s.cardTitle}>{profile.student.name}</Text><Text style={s.note}>{profile.student.program} · {profile.student.specialization}</Text><Text style={s.note}>Student ID: {profile.student.student_id}</Text><Text style={s.note}>CGPA: {profile.student.cgpa ?? 'Not available'}</Text></Panel><Panel><Text style={s.eyebrow}>COMPETENCIES</Text><BarChart max={5} unit="/5" rows={profile.competencies.map(c => ({ label: c.skill.canonical_name, value: c.level }))} />{profile.competencies.length === 0 && <Text style={s.note}>No skill evidence yet.</Text>}</Panel><Panel><Text style={s.eyebrow}>TARGET ROLE</Text><Text style={s.cardTitle}>{role.title}</Text><Text style={s.note}>{role.skills.length} competencies in role profile</Text></Panel><Action title="Analyze gaps →" onPress={analyze} disabled={busy}/></>}
+    {stage === 'welcome' && <><Panel><Text style={s.eyebrow}>YOUR LEARNING JOURNEY</Text><Text style={s.listText}>01   Profile</Text><Text style={s.listText}>02   Alignment</Text><Text style={s.listText}>03   Roadmap</Text><Text style={s.listText}>04   Practice</Text></Panel><Action title="Open my journey →" onPress={start} disabled={busy}/></>}
+    {stage === 'profile' && profile && role && <><Panel><Text style={s.eyebrow}>{profile.student.is_synthetic ? 'STUDENT · SYNTHETIC' : 'STUDENT PROFILE'}</Text><Text style={s.cardTitle}>{profile.student.name}</Text><Text style={s.note}>{profile.student.program} · {profile.student.specialization}</Text><Text style={s.note}>Student ID: {profile.student.student_id}</Text><Text style={s.note}>CGPA: {profile.student.cgpa ?? 'Not available'}</Text></Panel><Panel><Text style={s.eyebrow}>COMPETENCIES</Text><BarChart max={5} unit="/5" rows={profile.competencies.map(c => ({ label: c.skill.canonical_name, value: c.level }))} />{profile.competencies.length === 0 && <Text style={s.note}>No skill evidence yet.</Text>}</Panel><Panel><Text style={s.eyebrow}>TARGET ROLE</Text><Text style={s.cardTitle}>{role.title}</Text><Text style={s.note}>{role.skills.length} competencies in role profile</Text></Panel><Action title="Analyze gaps →" onPress={analyze} disabled={busy}/></>}
     {stage === 'analysis' && analysis && <>{readinessCard(analysis.readiness)}<Panel><Text style={s.eyebrow}>PRIORITY GAPS</Text>{analysis.gaps.length === 0 ? <Text style={s.note}>No gaps identified from current evidence.</Text> : <SkillGapChart gaps={analysis.gaps} />}</Panel>{analysis.warnings.length > 0 && <Panel>{analysis.warnings.map((w,i)=><Text style={s.note} key={i}>{w}</Text>)}</Panel>}<Action title="Build roadmap →" onPress={loadRoadmap} disabled={busy}/></>}
     {stage === 'roadmap' && <><CareerRoadmap items={roadmap} onChange={setRoadmap}/><Text style={s.eyebrow}>PRACTICE AN IDENTIFIED SKILL</Text>{quizSkills.length ? quizSkills.map(g => <Action key={g.skill.id} title={`Take ${g.skill.canonical_name} assessment →`} onPress={() => loadQuiz(g.skill.id)} disabled={busy} secondary/>) : <Text style={s.note}>No supported mini assessment matches these gaps. Current question sets: SQL, Python, Docker.</Text>}<Action title="Refresh dashboard" onPress={refresh} secondary disabled={busy}/></>}
     {stage === 'quiz' && quiz && <><Panel><Text style={s.eyebrow}>{quiz.question_set_version} · {quiz.questions.length} QUESTIONS</Text>{quiz.questions.map((q, index) => <View style={s.gap} key={q.id}><Text style={s.lineTitle}>{index+1}. {q.prompt}</Text>{q.options.map(option => <Pressable accessibilityRole="radio" disabled={busy} accessibilityState={{ checked: answers[q.id] === option, disabled: busy }} key={option} onPress={() => setAnswers(prev => ({ ...prev, [q.id]: option }))} style={[s.option, answers[q.id] === option && s.selected]}><Text style={[s.optionText, answers[q.id] === option && s.selectedText]}>{option}</Text></Pressable>)}</View>)}</Panel><Action title="Submit assessment" onPress={submit} disabled={busy || Object.keys(answers).length !== quiz.questions.length}/><Action title="Back to roadmap" onPress={() => setStage('roadmap')} secondary disabled={busy}/></>}

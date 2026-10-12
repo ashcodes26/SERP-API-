@@ -78,7 +78,10 @@ def test_timeout():
 def test_missing_key_endpoint_and_invalid_input(monkeypatch):
     from app import main as main_module
     monkeypatch.setattr(main_module, 'get_settings', lambda: Settings(_env_file=None, app_env='test', serpapi_api_key=''))
-    with TestClient(main_module.create_app()) as client:
+    from app.auth import current_principal, Principal
+    isolated = main_module.create_app()
+    isolated.dependency_overrides[current_principal] = lambda: Principal('student', 1)
+    with TestClient(isolated) as client:
         # Explicitly isolate this case from the developer's local .env credentials.
         resp = client.post("/api/resources/search", json={"skill": "SQL"})
         assert resp.status_code == 503
@@ -102,7 +105,10 @@ def test_endpoint_returns_typed_success(monkeypatch):
         )
 
     monkeypatch.setattr(main_module, "search_resources", fake_search)
+    from app.auth import current_principal, Principal
+    app.dependency_overrides[current_principal] = lambda: Principal('student', 1)
     with TestClient(app) as client:
         response = client.post("/api/resources/search", json={"skill": "SQL"})
+    app.dependency_overrides.pop(current_principal)
     assert response.status_code == 200
     assert response.json()["results"][0]["url"] == "https://example.org/sql"

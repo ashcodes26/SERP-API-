@@ -31,7 +31,8 @@
           "backgroundColor": "#000000"
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

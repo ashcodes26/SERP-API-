@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: float = Field(default=30, ge=1, le=45)
 
     auth_signing_key: SecretStr | None = None
-    admin_password: SecretStr | None = None
     demo_password: SecretStr | None = None
     demo_login_bypass: bool = False
     import_retention_hours: int = 24

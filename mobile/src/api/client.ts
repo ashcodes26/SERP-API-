@@ -5,7 +5,9 @@ import type { ResumeWorkspaceOut, ResumeTargetIn, LinkedInIn, LinkedInOut, Linke
 let sessionToken: string | null = null;
 let sessionStudentId: number | null = null;
 let selectedTarget: AnalysisOut | null = null;
+let onUnauthorized: (() => void) | null = null;
 export const session = {
+  onUnauthorized(handler: (() => void) | null) { onUnauthorized = handler; },
   setToken(token: string | null) { sessionToken = token; },
   setStudentId(id: number | null) { sessionStudentId = id; },
   getStudentId() { return sessionStudentId; },
@@ -38,6 +40,7 @@ export async function request<T>(path: string, init: RequestInit = {}, timeoutMs
       headers: { Accept: 'application/json', ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}), ...init.headers },
     });
     if (!res.ok) {
+      if (res.status === 401 && sessionToken) onUnauthorized?.();
       let body: Partial<ErrorBody> | undefined;
       try {
         const json = await res.json();
@@ -65,6 +68,9 @@ export async function request<T>(path: string, init: RequestInit = {}, timeoutMs
 }
 
 export const api = {
+  me: () => request<import('@/types/contracts').AccountOut>('/api/auth/me'),
+  signup: (body: import('@/types/contracts').SignupIn) => request<LoginResponse>('/api/auth/signup', { method: 'POST', body: JSON.stringify(body) }),
+  logout: () => request<{ signed_out: boolean }>('/api/auth/logout', { method: 'POST' }),
   demoSession: () => request<LoginResponse>('/api/auth/demo-session', { method: 'POST' }),
   login: (username: string, password: string) => request<LoginResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   health: () => request<HealthOut>('/api/health', {}, 5000),
@@ -143,6 +149,7 @@ export const marketApi = {
   },
 };
 export const careerApi = {
+  journey: () => request<{ student_id: number; job_id: number; synthetic: boolean }>('/api/placement/journey'),
   previewInput: (asset: DocumentPickerAsset) => request<import('@/types/contracts').JourneyPreviewOut>('/api/journey/input/preview', { method: 'POST', body: fileForm(asset, {}) }),
   saveInput: (body: import('@/types/contracts').JourneySaveIn) => jsonPost<ProfileOut>('/api/journey/input/save', body),
   seed: () => jsonPost<{ student_id: number; job_id: number; synthetic: boolean }>('/api/demo/seed', {}),
@@ -161,14 +168,13 @@ export interface ImportIssue { row_number: number; field: string | null; issue_c
 export interface ImportSummary { job: { id: number; filename: string; status: string; total_rows: number; valid_rows: number; error_rows: number; duplicate_rows: number; imported_rows: number; field_mapping: Record<string, string> }; issues: ImportIssue[] }
 export interface ImportUpload { job_id: number; headers: string[]; suggested_mapping: Record<string, string>; total_rows: number }
 export const importApi = {
-  async upload(asset: { uri: string; name: string; mimeType?: string }): Promise<ImportUpload> {
-    const form = new FormData();
-    form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.endsWith('.csv') ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') } as unknown as Blob);
+  async upload(asset: DocumentPickerAsset, cohortId: number): Promise<ImportUpload> {
+    const form = fileForm(asset, {});
     // No JSON Content-Type: fetch must add the multipart boundary itself.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/import/upload`, { method: 'POST', body: form, signal: controller.signal, headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {} });
+      const response = await fetch(`${API_BASE_URL}/api/import/upload?cohort_id=${cohortId}`, { method: 'POST', body: form, signal: controller.signal, headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {} });
       const data = await response.json();
       if (!response.ok) throw new ApiError(data.detail?.code ?? 'upload_failed', data.detail?.message ?? 'Upload failed', response.status >= 500, response.status);
       return data as ImportUpload;

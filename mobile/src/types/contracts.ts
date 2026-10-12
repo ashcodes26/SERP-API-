@@ -4,6 +4,48 @@
  */
 export type Level = number | null;
 
+export interface CohortIn { name: string; department: string; batch: string; section: string }
+export interface ImportPreviewIn { job_id: number; mapping: Record<string, string> }
+export interface ImportConfirmIn { job_id: number; update_duplicates?: boolean }
+export interface CohortOut extends CohortIn { id: number; students: number }
+export interface PlacementStudentOut {
+  id: number; student_id: string; name: string; department: string | null; batch: string | null; section: string | null;
+  profile_completion: number; resume_status: string; assessments_completed: number; roadmap_completed: number; roadmap_total: number;
+  training_completed: number; training_total: number; overdue: number; applications: number; offers: number; follow_up: string[];
+}
+export interface PlacementStudentsOut { items: PlacementStudentOut[]; total: number; page: number; page_size: number }
+export interface PlacementDashboardOut { metrics: Record<string, number | null>; definitions: Record<string, string>; follow_up: PlacementStudentOut[] }
+export interface PlacementFilter { q?: string; department?: string; batch?: string; section?: string; progress?: 'follow_up' | 'complete' | ''; cohort_id?: number }
+export interface ReviewShareIn { workspace_id: number; version: number; admin_id: number; share_suggestions: boolean; consent: boolean }
+export interface ReviewDecisionIn { status: 'changes_requested' | 'approved'; feedback: string }
+export interface ReviewFeedbackOut { id: number; status: string; feedback: string; created_at: string }
+export interface FacultyReviewOut {
+  id: number; student_id: number; admin_id: number; workspace_id: number; version: number; text: string;
+  status: 'submitted' | 'changes_requested' | 'approved'; shared: boolean; suggestions: ResumeAnalysisOut | null;
+  feedback: ReviewFeedbackOut[]; created_at: string; disclaimer: string;
+}
+export interface ResumeRevisionOut { id: number; workspace_id: number; version: number; text: string; created_at: string }
+export interface EligibilityIn { min_cgpa?: number | null; departments?: string[]; graduation_year?: number | null }
+export interface EligibilityOut { status: 'eligible' | 'not_eligible' | 'needs_review'; reasons: string[] }
+export interface DriveIn { cohort_id: number; company: string; role: string; description: string; deadline: string; eligibility: EligibilityIn; application_link: string }
+export interface DriveUpdateIn extends DriveIn { version: number }
+export interface DriveOut extends DriveIn { id: number; version: number; decision: EligibilityOut | null }
+export type ApplicationStage = 'applied' | 'shortlisted' | 'interview' | 'offered' | 'rejected' | 'withdrawn';
+export interface ApplicationUpdateIn { version: number; stage: ApplicationStage; note?: string; eligibility_override?: boolean; review_reason?: string }
+export interface ApplicationEventOut { stage: ApplicationStage; note: string; created_at: string }
+export interface ApplicationOut { id: number; drive_id: number; student_pk: number; stage: ApplicationStage; eligibility_override: boolean | null; review_reason: string | null; version: number; updated_at: string; history: ApplicationEventOut[] }
+export interface TrainingIn { student_ids: number[]; cohort_id?: number; title: string; kind: 'resource' | 'course' | 'project' | 'assessment'; instructions: string; resource_url?: string; skill_id?: number; roadmap_item_id?: number; deadline: string }
+export interface TrainingProgressIn { version: number; status: 'not_started' | 'in_progress' | 'completed'; evidence: string }
+export interface TrainingOut { id: number; student_pk: number; title: string; kind: string; instructions: string; resource_url: string | null; skill_id: number | null; roadmap_item_id: number | null; deadline: string; status: string; evidence: string; version: number }
+export interface AssessmentSummaryOut { id: number; skill_id: number; score: number; completed_at: string }
+export interface PlacementDetailOut { profile: ProfileOut; summary: PlacementStudentOut; assessments: AssessmentSummaryOut[]; roadmap: RoadmapItemOut[]; training: TrainingOut[]; applications: ApplicationOut[]; reviews: FacultyReviewOut[] }
+export interface BatchSkillOut {
+  skill: SkillOut; required_level: number | null; common_gap_count: number; known_count: number; mean_proficiency: number | null;
+  assessed_count: number; mean_assessed_proficiency: number | null; missing_assessment_count: number; unknown_count: number;
+  gap_student_ids: number[]; unknown_student_ids: number[]; assessed_student_ids: number[]; missing_assessment_student_ids: number[];
+}
+export interface BatchGapOut { cohort_id: number; job: JobOut; student_count: number; skills: BatchSkillOut[]; source: string; disclaimer: string }
+
 export type SourceType =
   | 'institutional_record' | 'resume' | 'project' | 'certification'
   | 'self_report' | 'github' | 'linkedin' | 'assessment' | 'demo';
@@ -23,6 +65,9 @@ export interface AuthSessionOut {
   role: 'admin' | 'student';
   student_id: number | null;
 }
+export interface AccountOut { account_id: number; username: string; role: 'admin' | 'student'; student_id: number | null }
+export interface LoginIn { username: string; password: string }
+export interface SignupIn extends LoginIn { student_id: string; name: string; email: string; department: string }
 
 export interface StudentIn {
   student_id: string; name: string; email: string;

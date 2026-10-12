@@ -1,4 +1,10 @@
-import type { MarketDemandOut, MarketFilter, StudentDemandSkillOut } from '@/types/contracts';
+import type { DemandSkillOut, MarketDemandOut, MarketFilter, StudentDemandSkillOut } from '@/types/contracts';
+
+export function filterDemandSkills(skills: DemandSkillOut[], query: string) {
+  const normalized = query.trim().toLocaleLowerCase();
+  return skills.map((skill, index) => ({ skill, rank: index + 1 }))
+    .filter(({ skill }) => skill.name.toLocaleLowerCase().includes(normalized));
+}
 
 export function radarData(skills: StudentDemandSkillOut[]) {
   return skills.filter(s => s.competency_percentage !== null && s.demand_percentage !== null)

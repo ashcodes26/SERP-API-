@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timezone, timedelta
 import asyncio
 import json
 
@@ -27,6 +27,10 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv('LINKEDIN_CLIENT_ID', '')
     monkeypatch.setenv('LINKEDIN_CLIENT_SECRET', '')
     monkeypatch.setenv('LINKEDIN_REDIRECT_URI', '')
+    monkeypatch.setenv('GEMINI_API_KEY', 'synthetic-test-key')
+    from app.services import gemini_resume
+    from test_gemini_resume import response
+    monkeypatch.setattr(gemini_resume, 'generate', lambda *args: response())
     get_settings.cache_clear()
     engine = make_engine(f'sqlite:///{tmp_path / "workspace.db"}')
     init_db(engine)
@@ -54,8 +58,45 @@ def create(client):
     return response.json()
 
 
+def test_pdf_profile_import_unified_corrections_duplicate_and_ownership(workspace):
+    from test_candidate_analysis import pdf_bytes
+    client, _, ids = workspace
+    payload = {'storage_consent': True}
+    document = pdf_bytes()
+    first = client.post('/api/resumes/upload', data=payload, files={'file': ('resume.pdf', document, 'application/pdf')})
+    assert first.status_code == 201, first.text
+    item = first.json()
+    duplicate = client.post('/api/resumes/upload', data=payload, files={'file': ('again.pdf', document, 'application/pdf')}).json()
+    assert duplicate['id'] == item['id'] and len(client.get('/api/resumes').json()) == 1
+    imported = client.post('/api/profile/linkedin/upload', data={'consent': True, 'profile_url': 'https://in.linkedin.com/in/alex'}, files={'file': ('profile.pdf', document, 'application/pdf')})
+    assert imported.status_code == 200, imported.text
+    assert imported.json()['profile_url'] == 'https://www.linkedin.com/in/alex/'
+    unified = client.get(f'/api/resumes/{item["id"]}/candidate-profile')
+    assert unified.status_code == 200 and unified.headers['cache-control'] == 'no-store'
+    assert any(len(skill['sources']) == 2 for skill in unified.json()['skills'])
+    item = client.get(f'/api/resumes/{item["id"]}').json()
+    correction = 'Name: Alex Corrected\nProjects: Built a TypeScript application for a college project.'
+    item = client.put(f'/api/resumes/{item["id"]}/revision', json={'version': item['version'], 'text': correction, 'factual_confirmation': True}).json()
+    assert item['extracted_profile']['fields']['full_name'][0]['value'] == 'Alex Corrected'
+    item = analyzed(client, item, 'Requirements: TypeScript and Python required. SQL preferred.')
+    assert item['analysis']['engine'] == 'gemini'
+    assert item['revised_text'] == correction
+    result = client.post(f'/api/resumes/{item["id"]}/semantic-review', json={'description': JD})
+    assert result.status_code == 404
+    for prefix in ['get', 'post']:
+        app.dependency_overrides[current_principal] = lambda: Principal('student', ids[1])
+        if prefix == 'get':
+            assert client.get(f'/api/resumes/{item["id"]}/candidate-profile').status_code == 404
+        else:
+            assert client.post(f'/api/resumes/{item["id"]}/semantic-review', json={'description': JD}).status_code == 404
+    assert client.get('/api/profile/linkedin').json()['profile_text'] == ''
+    app.dependency_overrides[current_principal] = lambda: Principal('student', ids[0])
+    assert client.delete('/api/profile/linkedin').status_code == 200
+    assert all(c['source'] == 'resume_saved_revision' for skill in client.get(f'/api/resumes/{item["id"]}/candidate-profile').json()['skills'] for c in skill['sources'])
+
+
 def analyzed(client, item, jd=JD):
-    response = client.post(f'/api/resumes/{item["id"]}/analyze', json={'version': item['version'], 'title': 'Data analyst', 'description': jd})
+    response = client.post(f'/api/resumes/{item["id"]}/analyze', json={'version': item['version'], 'title': 'Data analyst', 'description': jd, 'ai_consent': True})
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -64,9 +105,9 @@ def test_resume_analysis_decisions_revision_restore_and_export(workspace):
     client, factory, ids = workspace
     item = analyzed(client, create(client))
     result = item['analysis']
-    assert result['matching_skills'] == ['Python']
-    assert 'SQL' in result['not_detected_skills']
-    assert result['score'] == pytest.approx(45.83, abs=.01)
+    assert result['engine'] == 'gemini'
+    assert result['ai_review']['feedback']['scores']['overall']['value'] == 65
+    assert 'score' not in result
     assert result['target_source'] == 'user_provided'
     suggestion = next(x for x in result['suggestions'] if x['kind'] == 'replace' and 'Worked on' in x['original'])
     for state in ['rejected', 'accepted']:
@@ -94,14 +135,14 @@ def test_resume_analysis_decisions_revision_restore_and_export(workspace):
 def test_upload_limits_consent_invalid_target_and_insufficient_score(workspace):
     client, _, _ = workspace
     assert client.post('/api/resumes', json={'text': TEXT, 'storage_consent': False}).status_code == 422
-    assert client.post('/api/resumes/upload', data={'storage_consent': True}, files={'file': ('resume.pdf', b'fake', 'application/pdf')}).status_code == 415
+    assert client.post('/api/resumes/upload', data={'storage_consent': True}, files={'file': ('resume.pdf', b'fake', 'application/pdf')}).status_code == 422
     assert client.post('/api/resumes/upload', data={'storage_consent': True}, files={'file': ('r.txt', b'x' * 1048577, 'text/plain')}).status_code == 413
     assert client.post('/api/resumes/upload', data={'storage_consent': True}, files={'file': ('r.docx', b'fake', DOCX_MIME)}).status_code == 422
     item = client.post('/api/resumes/upload', data={'storage_consent': True}, files={'file': ('../r.docx', export_document(TEXT, 'docx'), DOCX_MIME)}).json()
     assert item['filename'] == 'r.docx' and item['original_text'] == TEXT
     assert client.post(f'/api/resumes/{item["id"]}/analyze', json={'version': item['version'], 'title': 'Role', 'description': 'short'}).status_code == 422
     item = analyzed(client, item, 'Join our organization and help our team work together effectively.')
-    assert item['analysis']['score'] is None
+    assert 'score' not in item['analysis']
     assert item['original_text'] == TEXT
     assert client.post('/api/resumes', json={'text': TEXT + '\ufffe', 'storage_consent': True}).status_code == 422
     assert client.post('/api/resumes', content=json.dumps({'text': TEXT + '\ud800', 'storage_consent': True}), headers={'Content-Type': 'application/json'}).status_code == 422
@@ -122,17 +163,8 @@ def test_linkedin_manual_consent_conflicts_corrections_deletion(workspace):
     assert not response.json()['automatic_import_available']
     assert client.post('/api/profile/linkedin/automatic', json=payload).status_code == 503
     item = analyzed(client, client.get(f'/api/resumes/{item["id"]}').json())
-    python = next(x for x in item['analysis']['unified_skills'] if x['name'] == 'Python')
-    assert python['conflict'] and not python['proficiency_assessed']
-    sql = next(x for x in item['analysis']['unified_skills'] if x['name'] == 'SQL')
-    assert any(x['source'] == 'linkedin_self_provided' and x['kind'] == 'project_or_experience' for x in sql['sources'])
-    assert item['analysis']['profile_sections']['education'] == ['BSc']
-    append = next(x for x in item['analysis']['suggestions'] if x['kind'] == 'append' and x['skill'] == 'SQL')
-    path = f'/api/resumes/{item["id"]}/suggestions/{append["id"]}'
-    assert client.patch(path, json={'version': item['version'], 'decision': 'accepted'}).status_code == 422
-    item = client.patch(path, json={'version': item['version'], 'decision': 'accepted', 'confirmation': 'Built a SQL dashboard for my college project.'}).json()
-    item = client.post(f'/api/resumes/{item["id"]}/apply', json={'version': item['version']}).json()
-    assert 'SQL dashboard' in item['revised_text']
+    assert all(x['source'] == 'gemini' and x['kind'] == 'replace' for x in item['analysis']['suggestions'])
+    assert 'SQL dashboard' not in item['revised_text']
     assert client.delete('/api/profile/linkedin').status_code == 200
     saved = client.get(f'/api/resumes/{item["id"]}').json()
     assert saved['analysis'] is None and saved['decisions'] == {}
@@ -142,11 +174,12 @@ def test_linkedin_manual_consent_conflicts_corrections_deletion(workspace):
 
 def test_task_crud_filters_counts_links_and_independent_milestones(workspace):
     client, factory, ids = workspace
-    body = {'title': ' Practice SQL ', 'priority': 'high', 'roadmap_milestone_id': ids[2], 'due_date': str(date.today())}
+    today = datetime.now(timezone.utc).date()
+    body = {'title': ' Practice SQL ', 'priority': 'high', 'roadmap_milestone_id': ids[2], 'due_date': str(today)}
     response = client.post('/api/roadmap/tasks', json=body)
     assert response.status_code == 201, response.text
     item = response.json(); assert item['title'] == 'Practice SQL' and item['skill_id'] is not None
-    future = client.post('/api/roadmap/tasks', json={'title': 'Future project', 'due_date': str(date.today() + timedelta(days=2)), 'priority': 'low'}).json()
+    future = client.post('/api/roadmap/tasks', json={'title': 'Future project', 'due_date': str(today + timedelta(days=2)), 'priority': 'low'}).json()
     assert client.get('/api/roadmap/tasks?view=today').json()['tasks'][0]['id'] == item['id']
     assert client.get('/api/roadmap/tasks?view=upcoming').json()['tasks'][0]['id'] == future['id']
     assert client.post('/api/roadmap/tasks', json={'title': '   '}).status_code == 422

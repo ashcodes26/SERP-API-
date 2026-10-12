@@ -154,7 +154,7 @@ def test_api_filters_me_ownership_and_no_provider_chart_calls(db, monkeypatch):
 
 
 @pytest.mark.parametrize('filename,mime,data,code', [
-    ('resume.pdf','application/pdf',b'%PDF-test','RESUME_FORMAT_UNSUPPORTED'),
+    ('resume.pdf','application/pdf',b'%PDF-test','RESUME_PARSE_FAILED'),
     ('resume.txt','image/png',b'A long enough text resume for tests','RESUME_FORMAT_UNSUPPORTED'),
     ('resume.txt','text/plain',b'\xff\x00','RESUME_PARSE_FAILED'),
     ('resume.docx',DOCX_MIME,b'not a ZIP','RESUME_PARSE_FAILED'),
@@ -183,21 +183,9 @@ def test_resume_docx_plain_text_and_unsafe_xml():
         parse_resume(content.getvalue(),'resume.docx',DOCX_MIME)
 
 
-def test_real_upload_endpoint_advice_errors_and_ownership(db, caplog):
+def test_old_resume_advice_endpoints_are_retired(db):
     listing = collect(db).jobs[0]; student, _ = seed_demo(db)
-    app.dependency_overrides[current_principal] = lambda: Principal('student',student.id)
-    text = 'Education: synthetic. Projects: a private-canary Python project with SQL.'
+    app.dependency_overrides[current_principal] = lambda: Principal('student', student.id)
     with TestClient(app) as api:
-        for filename, mime, data in [('resume.txt','text/plain',text.encode()),('resume.docx',DOCX_MIME,docx(text))]:
-            out = api.post(f'/api/jobs/{listing.id}/resume-upload', data={'student_id':student.id}, files={'file':(filename,data,mime)})
-            assert out.status_code == 200, out.text
-            assert out.json()['extracted_character_count'] == len(text)
-            assert out.json()['advice']['suggestions']
-        forbidden = api.post(f'/api/jobs/{listing.id}/resume-upload',data={'student_id':student.id+1},files={'file':('resume.txt',text.encode(),'text/plain')})
-        assert forbidden.status_code == 403
-        broken = api.post(f'/api/jobs/{listing.id}/resume-upload',data={'student_id':student.id},files={'file':('resume.docx',b'broken',DOCX_MIME)})
-        assert broken.status_code == 422 and broken.json()['detail']['code'] == 'RESUME_PARSE_FAILED'
-        huge = api.post(f'/api/jobs/{listing.id}/resume-upload',data={'student_id':student.id},files={'file':('resume.txt',b'x'*(MAX_RESUME_BYTES+1),'text/plain')})
-        assert huge.status_code == 413
-    assert 'private-canary' not in caplog.text
-    assert all('private-canary' not in row.extracted_summary for row in db.scalars(select(models.Evidence)).all())
+        for endpoint in ['resume-upload', 'resume-advice']:
+            assert api.post(f'/api/jobs/{listing.id}/{endpoint}').status_code == 404

@@ -14,6 +14,7 @@ def secure_client(monkeypatch, tmp_path):
     monkeypatch.setenv('AUTH_SIGNING_KEY', 's' * 48)
     monkeypatch.setenv('ADMIN_PASSWORD', 'admintest-password')
     monkeypatch.setenv('DEMO_PASSWORD', 'demotest-password')
+    monkeypatch.setenv('DEMO_LOGIN_BYPASS', 'false')
     get_settings.cache_clear()
     engine = make_engine(f'sqlite:///{tmp_path / "secure.db"}')
     init_db(engine)
@@ -22,7 +23,7 @@ def secure_client(monkeypatch, tmp_path):
         with maker() as db:
             yield db
     app.dependency_overrides[get_db] = override
-    with TestClient(app) as client:
+    with TestClient(app, client=('127.0.0.1', 50000)) as client:
         yield client, maker
     app.dependency_overrides.clear()
     get_settings.cache_clear()
@@ -64,6 +65,64 @@ def test_production_disables_demo_and_import(secure_client, monkeypatch):
     assert client.post('/api/demo/seed', headers=headers).status_code == 403
     assert client.get('/api/import/1', headers=headers).status_code == 403
     assert login(client, 'demo', 'demotest-password').status_code == 401
+
+
+def test_auto_demo_is_opt_in_and_preserves_existing_workspace(secure_client, monkeypatch):
+    client, maker = secure_client
+    assert client.post('/api/auth/demo-session').status_code == 404
+    monkeypatch.setenv('DEMO_LOGIN_BYPASS', 'true')
+    get_settings.cache_clear()
+    first = client.post('/api/auth/demo-session')
+    assert first.status_code == 200
+    assert first.headers['cache-control'] == 'no-store'
+    result = first.json()
+    assert result['role'] == 'student'
+    assert result['token_type'] == 'bearer'
+    student_id = result['student_id']
+    with maker() as db:
+        student = db.get(models.Student, student_id)
+        assert student.is_synthetic
+        student.name = 'Updated demo profile'
+        db.commit()
+    assert client.post('/api/auth/demo-session').json()['student_id'] == student_id
+    headers = {'Authorization': 'Bearer ' + result['access_token']}
+    assert client.get(f'/api/profile/{student_id}', headers=headers).status_code == 200
+    assert client.get('/api/resumes', headers=headers).status_code == 200
+    assert client.get(f'/api/profile/{student_id+100}', headers=headers).status_code == 403
+    assert client.get('/api/import/1', headers=headers).status_code == 403
+    with maker() as db:
+        assert db.get(models.Student, student_id).name == 'Updated demo profile'
+        assert db.query(models.Student).count() == 1
+
+
+def test_auto_demo_never_enabled_in_production(secure_client, monkeypatch):
+    client, _ = secure_client
+    monkeypatch.setenv('DEMO_LOGIN_BYPASS', 'true')
+    monkeypatch.setenv('APP_ENV', 'production')
+    get_settings.cache_clear()
+    assert client.post('/api/auth/demo-session').status_code == 404
+    assert client.get('/api/resumes').status_code == 401
+
+
+def test_auto_demo_rejects_remote_client_even_with_forwarded_header(secure_client, monkeypatch):
+    monkeypatch.setenv('DEMO_LOGIN_BYPASS', 'true')
+    get_settings.cache_clear()
+    with TestClient(app, client=('192.0.2.10', 50000)) as remote:
+        result = remote.post('/api/auth/demo-session', headers={'X-Forwarded-For': '127.0.0.1'})
+        assert result.status_code == 403
+        assert result.json()['detail']['code'] == 'LOCAL_DEMO_ONLY'
+
+
+def test_auto_demo_reports_missing_signing_key(secure_client, monkeypatch):
+    client, maker = secure_client
+    monkeypatch.setenv('DEMO_LOGIN_BYPASS', 'true')
+    monkeypatch.setenv('AUTH_SIGNING_KEY', '')
+    get_settings.cache_clear()
+    result = client.post('/api/auth/demo-session')
+    assert result.status_code == 503
+    assert result.json()['detail']['code'] == 'AUTH_NOT_CONFIGURED'
+    with maker() as db:
+        assert db.query(models.Student).count() == 0
 
 def test_purge_only_expired_import_staging(secure_client):
     _, maker = secure_client

@@ -39,6 +39,14 @@ class ErrorBody(BaseModel):
     retryable: bool = False
 
 
+class AuthSessionOut(BaseModel):
+    access_token: str
+    token_type: Literal['bearer'] = 'bearer'
+    expires_in: int = 3600
+    role: Literal['admin', 'student']
+    student_id: int | None
+
+
 # ---- Students & evidence -------------------------------------------------
 class StudentIn(BaseModel):
     student_id: str = Field(min_length=1, max_length=64)
@@ -86,6 +94,39 @@ class ProfileOut(BaseModel):
     student: StudentOut
     evidence: list[EvidenceOut] = []
     competencies: list[Competency] = []
+
+
+class JourneyDetails(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    department: str | None = Field(default=None, min_length=1, max_length=120)
+    program: str | None = Field(default=None, min_length=1, max_length=120)
+    specialization: str | None = Field(default=None, min_length=1, max_length=120)
+    semester: int | None = Field(default=None, ge=1, le=12)
+    cgpa: float | None = Field(default=None, ge=0, le=10)
+    graduation_year: int | None = Field(default=None, ge=2000, le=2100)
+    skills: list[str] = Field(default_factory=list, max_length=30)
+    summary: str = Field(default='', max_length=2000)
+
+    @field_validator('skills')
+    @classmethod
+    def skill_names(cls, values):
+        if any(not value.strip() or len(value.strip()) > 60 for value in values):
+            raise ValueError('Use 1-60 characters per skill')
+        return list(dict.fromkeys(value.strip() for value in values))
+
+
+class JourneyPreviewOut(BaseModel):
+    details: JourneyDetails
+    ignored_columns: list[str]
+    profile_digest: str
+
+
+class JourneySaveIn(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    details: JourneyDetails
+    profile_digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    confirmed: bool
 
 
 # ---- Jobs ---------------------------------------------------------------
@@ -330,17 +371,6 @@ class MarketSkillsOut(BaseModel):
     warnings: list[str]
 
 
-class ResumeAdviceIn(JobMatchIn):
-    text: str = Field(min_length=30, max_length=20000)
-
-
-class ResumeAdviceOut(BaseModel):
-    supported_keywords: list[str]
-    unsubstantiated_keywords: list[str]
-    suggestions: list[str]
-    limitations: list[str]
-
-
 class RoadmapProgressIn(BaseModel):
     status: RoadmapStatus
     completion_evidence: str | None = Field(default=None, max_length=2000)
@@ -415,18 +445,13 @@ class MarketMeOut(BaseModel):
     coverage_definition: str = 'Observed skills with recorded evidence and known proficiency above zero / all observed skills * 100; not eligibility.'
 
 
-class ResumeUploadOut(BaseModel):
-    filename: str
-    extracted_character_count: int
-    advice: ResumeAdviceOut
-
-
 class ResumeCreateIn(BaseModel):
     text: str = Field(min_length=30, max_length=20000)
     storage_consent: bool
 
 
 class ResumeTargetIn(BaseModel):
+    ai_consent: bool = False
     version: int = Field(ge=1)
     job_id: int | None = Field(default=None, gt=0)
     title: str = Field(default='', max_length=200)
@@ -449,18 +474,11 @@ class SourceClaimOut(BaseModel):
     claimed_level: Level = None
 
 
-class UnifiedSkillOut(BaseModel):
-    name: str
-    sources: list[SourceClaimOut]
-    profile_level: Level
-    proficiency_assessed: bool
-    conflict: bool
-    requires_confirmation: bool
-
-
 class ResumeSuggestionOut(BaseModel):
+    source: Literal['gemini'] = 'gemini'
+    factual_validation: Literal['equivalent_wording', 'gemini_verified'] = 'equivalent_wording'
     id: str
-    kind: Literal['replace', 'append', 'review']
+    kind: Literal['replace']
     original: str
     proposed: str
     reason: str
@@ -468,43 +486,114 @@ class ResumeSuggestionOut(BaseModel):
     requires_confirmation: bool = False
 
 
+class GeminiStrengthOut(BaseModel):
+    model_config = {'extra': 'forbid', 'str_strip_whitespace': True, 'strict': True}
+    strength: str = Field(min_length=1, max_length=1000)
+    excerpt: str = Field(min_length=1, max_length=2000)
+
+
+class GeminiRewriteOut(BaseModel):
+    model_config = {'extra': 'forbid', 'str_strip_whitespace': True, 'strict': True}
+    original: str = Field(min_length=1, max_length=2000)
+    proposed: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class GeminiRewriteVerdictOut(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    id: str = Field(min_length=1, max_length=64)
+    facts_preserved: bool
+
+
+class GeminiRewriteVerificationOut(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True}
+    verdicts: list[GeminiRewriteVerdictOut] = Field(max_length=20)
+
+
+class GeminiRatingOut(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True, 'str_strip_whitespace': True}
+    value: int | None = Field(ge=0, le=100)
+    reason: str = Field(min_length=1, max_length=1000)
+    excerpts: list[str] = Field(max_length=5)
+
+    @field_validator('value', mode='before')
+    @classmethod
+    def integral_json_number(cls, value):
+        # JSON providers sometimes serialize an integer rating as 65.0.
+        # Preserve its exact value; never coerce strings, booleans or fractions.
+        return int(value) if type(value) is float and value.is_integer() else value
+
+
+class GeminiScoresOut(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True, 'str_strip_whitespace': True}
+    overall: GeminiRatingOut
+    relevance: GeminiRatingOut
+    evidence: GeminiRatingOut
+    clarity: GeminiRatingOut
+    structure: GeminiRatingOut
+
+
+class GeminiFeedbackOut(BaseModel):
+    model_config = {'extra': 'forbid', 'strict': True, 'str_strip_whitespace': True}
+    summary: str = Field(min_length=1, max_length=1500)
+    scores: GeminiScoresOut
+    strengths: list[GeminiStrengthOut] = Field(max_length=12)
+    gaps: list[str] = Field(max_length=20)
+    improvements: list[str] = Field(max_length=20)
+    rewrites: list[GeminiRewriteOut] = Field(max_length=20)
+    questions: list[str] = Field(max_length=20)
+
+    @model_validator(mode='after')
+    def bounded_text(self):
+        for text in self.gaps + self.improvements + self.questions:
+            if not text.strip() or len(text) > 1000:
+                raise ValueError('Feedback must be nonblank and bounded')
+        return self
+
+
+class GeminiReviewOut(BaseModel):
+    status: Literal['available', 'not_requested', 'unavailable', 'quota_limit', 'timeout', 'blocked', 'invalid_output', 'error']
+    message: str
+    model: str | None = None
+    feedback: GeminiFeedbackOut | None = None
+    rejected_rewrites: int = 0
+    rewrite_validation_status: Literal['not_needed', 'available', 'unavailable'] = 'not_needed'
+    rewrite_message: str | None = None
+    validation_warnings: list[str] = Field(default_factory=list)
+
+
 class ResumeAnalysisOut(BaseModel):
+    engine: Literal['gemini'] = 'gemini'
+    ai_review: GeminiReviewOut
     target_title: str
     target_source: Literal['serpapi_live', 'user_provided']
     source_url: str | None = None
-    requirements: list[ObservedRequirement]
-    resume_skills: list[str]
-    matching_skills: list[str]
-    not_detected_skills: list[str]
-    stronger_evidence_skills: list[str]
-    unified_skills: list[UnifiedSkillOut]
-    sections: dict[str, list[str]]
-    profile_sections: dict[str, list[str]] = Field(default_factory=dict)
-    relevant_excerpts: list[str]
-    structure_feedback: list[str]
-    score: float | None
-    score_components: dict[str, float | None]
-    rubric_version: str = 'resume-text-checks-v1'
-    rubric: str = '50% required-keyword coverage + 20% all requirement-keyword coverage + 20% project/experience context coverage + 10% recognized section coverage; all components 0–100.'
     suggestions: list[ResumeSuggestionOut]
-    career_recommendations: list[str]
+    disclaimer: str = 'Gemini ratings are subjective AI estimates out of 100, not official ATS scores, verified proficiency or hiring probabilities.'
+
+
+class ExtractedFieldOut(BaseModel):
+    value: str
+    source: str
+    excerpt: str
+    status: Literal['explicit', 'uncertain'] = 'explicit'
+    confidence: float = Field(ge=0, le=1)
+
+
+class ExtractedSkillOut(BaseModel):
+    name: str
+    category: str | None
+    level: Level = None
+    sources: list[SourceClaimOut]
+
+
+class CandidateExtractionOut(BaseModel):
+    fields: dict[str, list[ExtractedFieldOut]]
+    skills: list[ExtractedSkillOut]
+    conflicts: list[str] = Field(default_factory=list)
+    missing_fields: list[str]
+    analyzed_at: datetime | None
     warnings: list[str]
-
-
-class ResumeStatisticsOut(BaseModel):
-    strength_score: int
-    section_coverage: int
-    present_sections: list[str]
-    missing_sections: list[str]
-    word_count: int
-    character_count: int
-    bullet_count: int
-    action_statement_count: int
-    quantified_statement_count: int
-    detected_skills: list[str]
-    feedback: list[str]
-    rubric_version: str
-    rubric: str
 
 
 class ResumeWorkspaceOut(ORM):
@@ -519,17 +608,17 @@ class ResumeWorkspaceOut(ORM):
     created_at: datetime
     updated_at: datetime
 
-    @computed_field
-    @property
-    def original_statistics(self) -> ResumeStatisticsOut:
-        from app.services.resume_statistics import text_statistics
-        return ResumeStatisticsOut(**text_statistics(self.original_text))
+    @field_validator('analysis', mode='before')
+    @classmethod
+    def current_analysis_only(cls, value):
+        # Preserve old originals/revisions without exposing retired engine results.
+        return value if value is None or isinstance(value, ResumeAnalysisOut) or value.get('engine') == 'gemini' else None
 
     @computed_field
     @property
-    def revised_statistics(self) -> ResumeStatisticsOut:
-        from app.services.resume_statistics import text_statistics
-        return ResumeStatisticsOut(**text_statistics(self.revised_text))
+    def extracted_profile(self) -> CandidateExtractionOut:
+        from app.services.candidate_profile import extract_profile
+        return extract_profile([(self.revised_text, 'resume_saved_revision', False)], self.updated_at)
 
 
 class ResumeDecisionIn(BaseModel):
@@ -627,6 +716,12 @@ class LinkedInOut(BaseModel):
     updated_at: datetime | None = None
     automatic_import_available: bool = False
     message: str = 'Enter a LinkedIn profile URL to retrieve publicly indexed information, or supply your own profile text/export.'
+
+    @computed_field
+    @property
+    def extracted_profile(self) -> CandidateExtractionOut:
+        from app.services.candidate_profile import extract_profile
+        return extract_profile([(self.profile_text, 'linkedin_' + (self.import_method or 'self_provided'), self.confirmed)], self.updated_at)
 
     @computed_field
     @property

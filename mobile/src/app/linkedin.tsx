@@ -3,6 +3,7 @@ import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { linkedinApi, session, tasksApi } from '@/api/client';
 import { LinkedInInsights } from '@/components/linkedin-insights';
+import { CandidateEvidence } from '@/components/candidate-evidence';
 import { Action, Card, ui } from '@/components/career-ui';
 import { Check, Confirm, Field, pickResume } from '@/components/workspace-controls';
 import { releasePickedResume } from '@/utils/picked-resume';
@@ -34,6 +35,7 @@ export default function LinkedInScreen() {
     finally { lock.current = false; setBusy(false); }
   }, []);
   function setImported(value: LinkedInOut) {
+
     setTargetedAnalysis(null);
     setLookupDraftId(null);
     setProfile(value); setProfileUrl(value.profile_url ?? ''); setProfileText(value.profile_text); setConfirmed(value.confirmed); setConsent(!!value.consent_at);
@@ -74,23 +76,14 @@ export default function LinkedInScreen() {
   }
   const open = (url: string) => void perform(async () => { if (!/^https:\/\//i.test(url)) throw new Error('This source URL is unavailable.'); await Linking.openURL(url); });
   return <SafeAreaView edges={['bottom']} style={ui.screen}><ScrollView contentContainerStyle={[ui.content, { maxWidth: 1200 }]} keyboardShouldPersistTaps="handled">
-    <Text style={ui.kicker}>PROFILE / SOURCES / YOUR REVIEW</Text><Text style={ui.title}>LinkedIn Profile Analyzer</Text>
-    <Text style={ui.body}>Retrieve public profile excerpts, review the detected skills, or supply your own career details. Saved, reviewed information can support evidence checks in Resume Enhancer.</Text>
+    <Text style={ui.kicker}>PROFILE</Text><Text style={ui.title}>LinkedIn</Text>
+
     {!student ? <Card><Text style={ui.body}>Sign in with a student account to use your private LinkedIn analyzer.</Text></Card> : <>
       {busy && <View style={ui.row}><ActivityIndicator color={d.accent} /><Text style={ui.body}>Processing your request...</Text></View>}
       {!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text></Card>}
       {!!notice && <Card><Text accessibilityLiveRegion="polite" style={ui.body}>{notice}</Text></Card>}
-      <Card>
-        <Text style={ui.kicker}>PERSONALIZED PROFILE COACH</Text><Text style={ui.heading}>Analyze your career direction.</Text>
-        <Text style={ui.muted}>Choose a target to compare your saved profile evidence. Paste a specific job description to replace the template skill list.</Text>
-        <View style={ui.row}>{TARGET_ROLES.map(role => <Action secondary disabled={busy} key={role} onPress={() => { setTargetRole(role); setTargetedAnalysis(null); }}>{role}{targetRole === role ? ' (selected)' : ''}</Action>)}</View>
-        <Field label="LinkedIn target job description (optional)" value={jobDescription} onChange={value => { setJobDescription(value); setTargetedAnalysis(null); }} multiline disabled={busy} placeholder="Paste the responsibilities and required skills for your target opening." />
-        <Action disabled={busy || !profile?.profile_text || (!!jobDescription.trim() && jobDescription.trim().length < 30)} onPress={() => void perform(async () => { setTargetedAnalysis(await linkedinApi.analyze(targetRole, jobDescription)); setNotice('Career analysis updated using your saved profile text and selected target.'); })}>Analyze my LinkedIn profile</Action>
-        <Text style={ui.muted}>{profileText !== profile?.profile_text ? 'Your editor has unsaved changes. Save below to include them in analysis.' : 'Analysis uses your saved career text.'}</Text>
-        {!profile?.profile_text && <Text style={ui.body}>Retrieve and save profile excerpts or supply your career information below to unlock evidence-based insights.</Text>}
-      </Card>
-      {!!profile?.profile_text && <LinkedInInsights analysis={targetedAnalysis ?? profile.analysis} busy={busy} addTask={(title, description, priority) => void perform(async () => { await tasksApi.create({ title: `LinkedIn: ${title}`.slice(0, 200), description, priority }); setNotice('Profile improvement added to your roadmap to-do list in My journey.'); })} />}
-      <Card><Text style={ui.kicker}>YOUR PROFILE / CAREER EVIDENCE</Text><Text style={ui.heading}>Retrieve and review your profile</Text><Text style={ui.body}>{profile?.message ?? 'Supply your profile summary or TXT/DOCX export.'}</Text>
+      {!!profile?.profile_text && <CandidateEvidence profile={profile.extracted_profile} />}
+      <Card><Text style={ui.kicker}>YOUR PROFILE / CAREER EVIDENCE</Text><Text style={ui.heading}>Your profile</Text><Text style={ui.body}>{profile?.message ?? 'Supply your profile summary or PDF/DOCX/TXT export.'}</Text>
         <Field label="LinkedIn profile URL (optional)" value={profileUrl} onChange={setProfileUrl} maxLength={500} disabled={busy} placeholder="https://www.linkedin.com/in/your-name/" />
         <Check label="I consent to searching this public profile URL and storing its preview." checked={lookupConsent} onChange={setLookupConsent} disabled={busy} />
         <Action disabled={busy || !lookupConsent || !profileUrl.trim()} onPress={() => void perform(async () => { setPublicPreview(await linkedinApi.publicSearch(profileUrl.trim(), lookupConsent)); })}>Retrieve public profile information</Action>
@@ -108,12 +101,12 @@ export default function LinkedInScreen() {
         </View>}
         <Field label="Your profile information (editable)" value={profileText} onChange={setProfileText} multiline disabled={busy} placeholder="Skills, experience, projects, education, certifications, and actual outcomes. Use clear section headings." />
         <Check label="I consent to connecting my LinkedIn account and analyzing my supplied profile data." checked={consent} onChange={setConsent} disabled={busy} /><Check label="I reviewed this information and confirm it describes my own background." checked={confirmed} onChange={setConfirmed} disabled={busy} />
-        <View style={ui.row}><Action secondary disabled={busy || !consent || (!!lookupDraftId && !confirmed) || (!profileUrl.trim() && profileText.trim().length < 30)} onPress={() => void perform(async () => { setImported(await linkedinApi.save(profileBody())); setNotice(profileText.trim() ? 'Your reviewed profile is saved. Reanalyze the resume to review updated source evidence.' : 'Profile URL saved. Click Retrieve public profile information to search for indexed career details.'); })}>Save profile information</Action><Action secondary disabled={busy || !consent} onPress={() => void perform(async () => { const asset = await pickResume(); if (!asset) return; try { setImported(await linkedinApi.upload(asset, profileBody())); setNotice('Your own profile export was parsed and saved. Reanalyze to review its evidence.'); } finally { releasePickedResume(asset); } })}>Upload own profile TXT/DOCX</Action></View>
-        <Text style={ui.muted}>Connect to retrieve your name from LinkedIn. Add experience, education, and skills in the profile editor for career analysis.</Text>
+        <View style={ui.row}><Action secondary disabled={busy || !consent || (!!lookupDraftId && !confirmed) || (!profileUrl.trim() && profileText.trim().length < 30)} onPress={() => void perform(async () => { setImported(await linkedinApi.save(profileBody())); setNotice(profileText.trim() ? 'Your reviewed profile is saved. Reanalyze the resume to review updated source evidence.' : 'Profile URL saved. Click Retrieve public profile information to search for indexed career details.'); })}>Save profile</Action><Action secondary disabled={busy || !consent} onPress={() => void perform(async () => { const asset = await pickResume(); if (!asset) return; try { setImported(await linkedinApi.upload(asset, profileBody())); setNotice('Your own profile export was parsed and saved. Reanalyze to review its evidence.'); } finally { releasePickedResume(asset); } })}>Upload profile</Action></View>
+
         <Action secondary disabled={busy || !consent} onPress={() => void perform(async () => { const next = await linkedinApi.automatic(profileBody()); setConnection(null); setAuthorization(next); })}>Connect with LinkedIn</Action>
         {(authorization || connection) && <View style={ui.divider}>
-          {authorization && (!connection || connection.status === 'pending') && <><Action disabled={busy || !consent} onPress={() => open(authorization.authorization_url)}>Continue on LinkedIn</Action><Text style={ui.muted}>Approve access on LinkedIn, then return to this tab. This authorization expires after 10 minutes.</Text></>}
-          {!authorization && connection?.status === 'pending' && <Text style={ui.body}>Waiting for LinkedIn authorization. Complete it in your LinkedIn tab, or connect again to start a new attempt.</Text>}
+          {authorization && (!connection || connection.status === 'pending') && <><Action disabled={busy || !consent} onPress={() => open(authorization.authorization_url)}>Continue on LinkedIn</Action><Text style={ui.muted}>Approve on LinkedIn, then return · expires in 10 min</Text></>}
+          {!authorization && connection?.status === 'pending' && <Text style={ui.body}>Waiting for LinkedIn approval…</Text>}
           {connection?.status === 'exchanging' && <Text style={ui.body}>Retrieving LinkedIn member details...</Text>}
           {connection?.status === 'connected' && <><Text style={ui.heading}>Connected: {connection.name}</Text><Text style={ui.muted}>Source: official LinkedIn API</Text></>}
           {!!connection?.message && <Text accessibilityLiveRegion="polite" style={connection.status === 'failed' ? ui.error : ui.body}>{connection.message}</Text>}
@@ -121,6 +114,17 @@ export default function LinkedInScreen() {
         </View>}
         {(profile?.consent_at || publicPreview) && <>{profile?.consent_at && <Text style={ui.muted}>Saved {new Date(profile.updated_at!).toLocaleString()} / {profile.import_method?.replaceAll('_', ' ') ?? 'URL only; no import'} / {profile.confirmed ? 'Student confirmed, not externally verified' : 'Self-reported; confirmation needed'}</Text>}<Action secondary disabled={busy} onPress={() => setConfirmation({ title: 'Remove profile data', message: 'Delete your LinkedIn URL, supplied text and public preview, and invalidate source-derived resume analyses? Previously approved resume text is preserved; delete a resume to remove that copy.', action: async () => { const result = await linkedinApi.remove(); setImported(await linkedinApi.get()); setPublicPreview(null); setAuthorization(null); setConnection(null); setNotice(result.message); } })}>Remove LinkedIn data</Action></>}
       </Card>
+      <Card>
+        <Text style={ui.kicker}>TARGET</Text><Text style={ui.heading}>Target role</Text>
+
+        <View style={ui.row}>{TARGET_ROLES.map(role => <Action secondary disabled={busy} key={role} onPress={() => { setTargetRole(role); setTargetedAnalysis(null); }}>{role}{targetRole === role ? ' (selected)' : ''}</Action>)}</View>
+        <Field label="Job description (optional)" value={jobDescription} onChange={value => { setJobDescription(value); setTargetedAnalysis(null);  }} multiline disabled={busy} placeholder="Paste job description" />
+        <Action disabled={busy || !profile?.profile_text || (!!jobDescription.trim() && jobDescription.trim().length < 30)} onPress={() => void perform(async () => { setTargetedAnalysis(await linkedinApi.analyze(targetRole, jobDescription)); setNotice('Career analysis updated using your saved profile text and selected target.'); })}>Analyze profile</Action>
+        <Text style={ui.muted}>{profileText !== profile?.profile_text ? 'Your editor has unsaved changes. Save your profile input above to include them in analysis.' : 'Analysis uses your saved career text.'}</Text>
+        {!profile?.profile_text && <Text style={ui.body}>Save profile text to analyze.</Text>}
+      </Card>
+      {!!profile?.profile_text && <LinkedInInsights analysis={targetedAnalysis ?? profile.analysis} busy={busy} addTask={(title, description, priority) => void perform(async () => { await tasksApi.create({ title: `LinkedIn: ${title}`.slice(0, 200), description, priority }); setNotice('Profile improvement added to your roadmap to-do list in My journey.'); })} />}
+
     </>}
     {confirmation && <Confirm title={confirmation.title} message={confirmation.message} busy={busy} onCancel={() => setConfirmation(null)} onConfirm={() => void perform(async () => { await confirmation.action(); setConfirmation(null); })} />}
   </ScrollView></SafeAreaView>;

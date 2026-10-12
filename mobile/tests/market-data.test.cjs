@@ -8,7 +8,17 @@ const ts = require('typescript');
 const file = path.resolve(__dirname, '../src/utils/market-data.ts');
 const compiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const runtime = new Module(file, module); runtime._compile(compiled, file);
-const { radarData, buildMarketFilters, demandCsv } = runtime.exports;
+const { radarData, buildMarketFilters, demandCsv, filterDemandSkills } = runtime.exports;
+
+test('skill filtering keeps original ranks, counts and unknown percentages without changing results', () => {
+  const skills = [{ name: 'SQL', distinct_job_count: 5, demand_percentage: 50 }, { name: 'Python', distinct_job_count: 3, demand_percentage: 30 }, { name: 'PostgreSQL', distinct_job_count: 0, demand_percentage: null }];
+  const snapshot = JSON.stringify(skills);
+  assert.deepEqual(filterDemandSkills(skills, ' SQL ').map(row => [row.rank, row.skill.name]), [[1, 'SQL'], [3, 'PostgreSQL']]);
+  assert.equal(filterDemandSkills(skills, 'postgres')[0].skill.demand_percentage, null);
+  assert.equal(filterDemandSkills(skills, 'unknown').length, 0);
+  assert.equal(filterDemandSkills(skills, '').length, 3);
+  assert.equal(JSON.stringify(skills), snapshot);
+});
 
 test('radar excludes unknowns, preserves recorded zero and caps axes without mutating inputs', () => {
   const skills = [{ name: 'unknown', competency_percentage: null, demand_percentage: 100 },

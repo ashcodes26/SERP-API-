@@ -1,3 +1,4 @@
+import { BarChart, StatStrip } from '@/components/analytics';
 import { design as d } from '@/constants/design';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -28,9 +29,9 @@ export default function AdminImport() {
     setUploaded(response); setMapping(response.suggested_mapping);
   });
   return <SafeAreaView edges={['bottom']} style={styles.screen}><ScrollView contentContainerStyle={styles.content}>
-    <Text style={styles.kicker}>Skillup / DEMO ADMINISTRATION</Text>
-    <Text style={styles.title}>A clear start for every student.</Text><View style={styles.steps}><Text style={styles.step}>01 / Upload</Text><Text style={styles.step}>02 / Map columns</Text><Text style={styles.step}>03 / Review & import</Text></View>
-    <Text style={styles.note}>Bring synthetic student records into your workspace. Upload a file, match the columns, and review every row before importing.</Text>
+    <Text style={styles.kicker}>ADMIN</Text>
+    <Text style={styles.title}>Student import</Text><View style={styles.steps}><Text style={styles.step}>01 / Upload</Text><Text style={styles.step}>02 / Map columns</Text><Text style={styles.step}>03 / Review & import</Text></View>
+
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={pick} style={[uploaded ? styles.secondary : styles.primary, busy && { opacity: 0.5 }]}><Text style={uploaded ? styles.field : styles.primaryText}>{uploaded ? 'Choose another file' : 'Choose CSV / XLSX'}</Text></Pressable>
     {uploaded && <View style={styles.card}><Text style={styles.heading}>{uploaded.total_rows} rows · {uploaded.headers.length} columns</Text><Text style={styles.note}>{uploaded.headers.join(', ')}</Text>
       <Text style={styles.heading}>Column mapping</Text>
@@ -40,7 +41,7 @@ export default function AdminImport() {
       <Pressable accessibilityRole="button" disabled={busy} style={[result ? styles.secondary : styles.primary, busy && { opacity: 0.5 }]} onPress={() => perform(async () => setResult(await importApi.preview(uploaded.job_id, mapping)))}><Text style={result ? styles.field : styles.primaryText}>Validate and preview</Text></Pressable>
     </View>}
     {result && <View style={styles.card}><Text style={styles.heading}>Import status: {result.job.status.replaceAll('_', ' ')}</Text>
-      <Text style={styles.count}>Valid {result.job.valid_rows}  ·  Duplicates {result.job.duplicate_rows}  ·  Errors {result.job.error_rows}  ·  Imported {result.job.imported_rows}</Text>
+      <StatStrip items={[{ label: "Valid", value: result.job.valid_rows }, { label: "Duplicates", value: result.job.duplicate_rows }, { label: "Errors", value: result.job.error_rows }, { label: "Imported", value: result.job.imported_rows }]} /><BarChart max={Math.max(1, result.job.valid_rows, result.job.duplicate_rows, result.job.error_rows, result.job.imported_rows)} unit=" rows" rows={[{ label: "Valid", value: result.job.valid_rows }, { label: "Errors", value: result.job.error_rows, color: d.error }, { label: "Imported", value: result.job.imported_rows, color: d.success }]} />
       {result.issues.slice(0, 100).map((issue, index) => <Text style={styles.issue} key={`${issue.row_number}-${issue.field}-${index}`}>Row {issue.row_number}: {issue.issue_code} — {issue.message}</Text>)}
       {result.issues.length > 100 && <Text style={styles.note}>Showing first 100 issues of {result.issues.length}.</Text>}
       {result.job.status === 'validated' && <><Pressable accessibilityRole="button" disabled={busy} style={styles.primary} onPress={() => perform(async () => setResult(await importApi.confirm(result.job.id)))}><Text style={styles.primaryText}>Import valid rows (skip duplicates)</Text></Pressable>
@@ -53,6 +54,6 @@ export default function AdminImport() {
 }
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: d.canvas }, content: { padding: 24, paddingTop: 36, paddingBottom: 48, maxWidth: 880, width: '100%', alignSelf: 'center', gap: 20 }, kicker: { fontWeight: '500', letterSpacing: 2, color: d.muted, fontSize: 11 }, title: { fontSize: 40, lineHeight: 46, letterSpacing: -1, fontWeight: '500', color: d.text }, note: { fontSize: 14, color: d.muted, lineHeight: 23 },
-  steps: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, step: { paddingVertical: 12, paddingHorizontal: 8, color: d.body, fontSize: 12, borderBottomWidth: 1, borderBottomColor: d.border }, card: { backgroundColor: d.surface, borderWidth: 1, borderColor: d.border, borderRadius: 12, padding: 24, gap: 16 }, heading: { fontSize: 20, fontWeight: '500', color: d.text }, primary: { padding: 16, minHeight: 48, backgroundColor: d.accent, borderRadius: 6, alignItems: 'center' }, primaryText: { fontWeight: '500', color: d.canvas }, secondary: { borderWidth: 1, borderColor: d.strongBorder, borderRadius: 6, padding: 16, minHeight: 48, alignItems: 'center' }, count: { fontSize: 15, fontWeight: '500', color: d.body, lineHeight: 24 },
+  steps: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, step: { paddingVertical: 12, paddingHorizontal: 8, color: d.body, fontSize: 12, borderBottomWidth: 1, borderBottomColor: d.border }, card: { backgroundColor: d.surface, borderWidth: 1, borderColor: d.border, borderRadius: 12, padding: 24, gap: 16 }, heading: { fontSize: 20, fontWeight: '500', color: d.text }, primary: { padding: 16, minHeight: 48, backgroundColor: d.accent, borderRadius: 24, alignItems: 'center' }, primaryText: { fontWeight: '500', color: d.text }, secondary: { borderWidth: 1, borderColor: d.strongBorder, borderRadius: 6, padding: 16, minHeight: 48, alignItems: 'center' }, count: { fontSize: 15, fontWeight: '500', color: d.body, lineHeight: 24 },
   issue: { fontSize: 12, color: d.body, lineHeight: 20, borderBottomWidth: 1, borderBottomColor: d.border, paddingBottom: 8 }, error: { color: d.error, fontWeight: '500' }, mapping: { gap: 8, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: d.border }, field: { fontSize: 13, color: d.body, fontWeight: '500' }, chip: { backgroundColor: d.elevated, padding: 14, minHeight: 48, borderRadius: 6, borderWidth: 1, borderColor: d.strongBorder }, chipText: { color: d.body, fontWeight: '500' }, options: { backgroundColor: d.elevated, borderRadius: 6, borderWidth: 1, borderColor: d.strongBorder }, option: { padding: 14, minHeight: 48, borderBottomWidth: 1, borderBottomColor: d.border },
 });

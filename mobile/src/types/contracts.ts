@@ -16,6 +16,13 @@ export type ImportStatus =
   | 'uploaded' | 'previewed' | 'validated' | 'completed' | 'completed_with_errors' | 'failed';
 
 export interface ErrorBody { code: string; message: string; retryable: boolean }
+export interface AuthSessionOut {
+  access_token: string;
+  token_type: 'bearer';
+  expires_in: number;
+  role: 'admin' | 'student';
+  student_id: number | null;
+}
 
 export interface StudentIn {
   student_id: string; name: string; email: string;
@@ -33,6 +40,9 @@ export interface EvidenceOut extends EvidenceIn { id: number; observed_at: strin
 export interface SkillOut { id: number; canonical_name: string; category?: string | null }
 export interface Competency { skill: SkillOut; level: Level; confidence: number; evidence_ids: number[] }
 export interface ProfileOut { student: StudentOut; evidence: EvidenceOut[]; competencies: Competency[] }
+export interface JourneyDetails { name?: string | null; department?: string | null; program?: string | null; specialization?: string | null; semester?: number | null; cgpa?: number | null; graduation_year?: number | null; skills: string[]; summary: string }
+export interface JourneyPreviewOut { details: JourneyDetails; ignored_columns: string[]; profile_digest: string }
+export interface JourneySaveIn { details: JourneyDetails; profile_digest: string; confirmed: boolean }
 
 export interface JobAnalyzeIn { title?: string; description?: string; seeded_job_id?: number }
 export interface JobSkillOut {
@@ -129,9 +139,6 @@ export interface MarketSkillsOut {
   skills: { name: string; count: number; required_count: number; preferred_count: number; share: number }[];
   warnings: string[];
 }
-export interface ResumeAdviceOut {
-  supported_keywords: string[]; unsubstantiated_keywords: string[]; suggestions: string[]; limitations: string[];
-}
 
 export interface MarketFilter { role?: string; location?: string; collected_after?: string; collected_before?: string }
 export interface DemandSkillOut { name: string; distinct_job_count: number; demand_percentage: number | null; required_count: number; preferred_count: number; job_ids: number[] }
@@ -152,25 +159,22 @@ export interface MarketMeOut {
   student_id: number; market: MarketDemandOut; skills: StudentDemandSkillOut[];
   evidenced_skill_count: number; observed_skill_count: number; coverage_percentage: number | null; coverage_definition: string;
 }
-export interface ResumeUploadOut { filename: string; extracted_character_count: number; advice: ResumeAdviceOut }
 
 export interface SourceClaimOut { source: string; kind: 'assessed_profile' | 'profile_evidence' | 'project_or_experience' | 'self_report'; excerpt: string; confirmed: boolean; claimed_level: Level }
-export interface UnifiedSkillOut { name: string; sources: SourceClaimOut[]; profile_level: Level; proficiency_assessed: boolean; conflict: boolean; requires_confirmation: boolean }
-export interface ResumeSuggestionOut { id: string; kind: 'replace' | 'append' | 'review'; original: string; proposed: string; reason: string; skill: string | null; requires_confirmation: boolean }
+export interface ResumeSuggestionOut { source: 'gemini'; factual_validation: 'equivalent_wording' | 'gemini_verified'; id: string; kind: 'replace'; original: string; proposed: string; reason: string; skill: string | null; requires_confirmation: boolean }
+export interface GeminiRatingOut { value: number | null; reason: string; excerpts: string[] }
+export interface GeminiScoresOut { overall: GeminiRatingOut; relevance: GeminiRatingOut; evidence: GeminiRatingOut; clarity: GeminiRatingOut; structure: GeminiRatingOut }
+export interface GeminiFeedbackOut { summary: string; scores: GeminiScoresOut; strengths: { strength: string; excerpt: string }[]; gaps: string[]; improvements: string[]; rewrites: { original: string; proposed: string; reason: string }[]; questions: string[] }
+export interface GeminiReviewOut { status: 'available' | 'not_requested' | 'unavailable' | 'quota_limit' | 'timeout' | 'blocked' | 'invalid_output' | 'error'; message: string; model: string | null; feedback: GeminiFeedbackOut | null; rejected_rewrites: number; rewrite_validation_status: 'not_needed' | 'available' | 'unavailable'; rewrite_message: string | null; validation_warnings: string[] }
 export interface ResumeAnalysisOut {
+  engine: 'gemini'; ai_review: GeminiReviewOut;
   target_title: string; target_source: 'serpapi_live' | 'user_provided'; source_url: string | null;
-  requirements: ObservedRequirement[]; resume_skills: string[]; matching_skills: string[]; not_detected_skills: string[]; stronger_evidence_skills: string[];
-  unified_skills: UnifiedSkillOut[]; sections: Record<string, string[]>; profile_sections: Record<string, string[]>; relevant_excerpts: string[]; structure_feedback: string[];
-  score: number | null; score_components: Record<string, number | null>; rubric_version: string; rubric: string;
-  suggestions: ResumeSuggestionOut[]; career_recommendations: string[]; warnings: string[];
+  suggestions: ResumeSuggestionOut[]; disclaimer: string;
 }
-export interface ResumeStatisticsOut {
-  strength_score: number; section_coverage: number; present_sections: string[]; missing_sections: string[];
-  word_count: number; character_count: number; bullet_count: number; action_statement_count: number;
-  quantified_statement_count: number; detected_skills: string[]; feedback: string[]; rubric_version: string; rubric: string;
-}
-export interface ResumeWorkspaceOut { original_statistics: ResumeStatisticsOut; revised_statistics: ResumeStatisticsOut; id: number; filename: string; original_text: string; revised_text: string; target: { job_id?: number | null; title?: string; description?: string; source?: string }; analysis: ResumeAnalysisOut | null; decisions: Record<string, { decision: 'accepted' | 'rejected' | 'pending'; confirmation: string }>; version: number; created_at: string; updated_at: string }
-export interface ResumeTargetIn { version: number; job_id?: number; title?: string; description?: string }
+export interface ExtractedFieldOut { value: string; source: string; excerpt: string; status: 'explicit' | 'uncertain'; confidence: number }
+export interface CandidateExtractionOut { fields: Record<string, ExtractedFieldOut[]>; skills: { name: string; category: string | null; level: Level; sources: SourceClaimOut[] }[]; conflicts: string[]; missing_fields: string[]; analyzed_at: string | null; warnings: string[] }
+export interface ResumeWorkspaceOut { extracted_profile: CandidateExtractionOut; id: number; filename: string; original_text: string; revised_text: string; target: { job_id?: number | null; title?: string; description?: string; source?: string }; analysis: ResumeAnalysisOut | null; decisions: Record<string, { decision: 'accepted' | 'rejected' | 'pending'; confirmation: string }>; version: number; created_at: string; updated_at: string }
+export interface ResumeTargetIn { ai_consent?: boolean; version: number; job_id?: number; title?: string; description?: string }
 export interface LinkedInIn { profile_url: string | null; profile_text: string; consent: boolean; confirmed: boolean; lookup_id?: string | null }
 export type LinkedInTargetRole = 'Data Analyst' | 'Machine Learning Engineer' | 'Full Stack Developer' | 'Backend Developer' | 'Cloud / DevOps Engineer';
 export interface ProfileRoleMatchOut { title: string; source: 'curated_role_template' | 'user_provided_job_description'; keyword_coverage: number | null; expected_skills: string[]; matched_skills: string[]; evidence_backed_skills: string[]; not_detected_skills: string[] }
@@ -183,7 +187,7 @@ export interface LinkedInAnalysisOut {
   improvements: { priority: 'high' | 'medium' | 'low'; title: string; reason: string; action: string; excerpt: string | null }[];
   headline_suggestion: string | null; wording_suggestions: { original: string; suggested: string; reason: string }[]; limitations: string[];
 }
-export interface LinkedInOut { analysis: LinkedInAnalysisOut; detected_skills: string[]; sections: Record<string, string[]>; profile_url: string | null; profile_text: string; import_method: string | null; confirmed: boolean; consent_at: string | null; updated_at: string | null; automatic_import_available: boolean; message: string }
+export interface LinkedInOut { extracted_profile: CandidateExtractionOut; analysis: LinkedInAnalysisOut; detected_skills: string[]; sections: Record<string, string[]>; profile_url: string | null; profile_text: string; import_method: string | null; confirmed: boolean; consent_at: string | null; updated_at: string | null; automatic_import_available: boolean; message: string }
 export interface LinkedInAuthorizationOut { id: string; authorization_url: string; expires_at: string }
 export interface LinkedInConnectionOut { id: string; status: 'pending' | 'exchanging' | 'connected' | 'failed'; name: string | null; message: string | null; source: 'linkedin_oidc' }
 export interface LinkedInPublicSearchOut { id: string; profile_url: string; status: 'found' | 'not_found'; retrieved_at: string; provenance: 'serpapi_live' | 'demo_fixture'; cache_status: 'live' | 'cached'; sources: { title: string; url: string; snippet: string }[]; detected_skills: string[]; profile_text: string; warnings: string[] }

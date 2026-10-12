@@ -1,0 +1,9 @@
+:root {
+  --color-void: #000000;
+  --color-mist: #bdbdbd;
+  --color-electric-iris: #8052ff;
+  --color-saffron: #ffb829;
+  --color-verdant: #15846e;
+  --spacing-unit: 6px;
+  --page-max-width: 1280px;
+}

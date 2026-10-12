@@ -1,6 +1,6 @@
 import { API_BASE_URL, API_TIMEOUT_MS } from '@/config';
 import type { DocumentPickerAsset } from 'expo-document-picker';
-import type { ResumeWorkspaceOut, ResumeTargetIn, LinkedInIn, LinkedInOut, LinkedInAnalysisOut, LinkedInTargetRole, RoadmapTaskIn, RoadmapTaskPatch, RoadmapTaskOut, TaskListOut, MarketFilter, MarketDemandOut, MarketMeOut, MarketCompareOut, MarketScopeOut, ResumeUploadOut, ErrorBody, HealthOut, ProfileOut, JobOut, AnalysisOut, RoadmapItemOut, DashboardOut, AssessmentOut, AssessmentSubmitIn, JobSearchIn, JobSearchOut, JobListingOut, JobMatchOut, MarketSkillsOut, ResumeAdviceOut, RoadmapStatus } from '@/types/contracts';
+import type { ResumeWorkspaceOut, ResumeTargetIn, LinkedInIn, LinkedInOut, LinkedInAnalysisOut, LinkedInTargetRole, RoadmapTaskIn, RoadmapTaskPatch, RoadmapTaskOut, TaskListOut, MarketFilter, MarketDemandOut, MarketMeOut, MarketCompareOut, MarketScopeOut, ErrorBody, HealthOut, ProfileOut, JobOut, AnalysisOut, RoadmapItemOut, DashboardOut, AssessmentOut, AssessmentSubmitIn, JobSearchIn, JobSearchOut, JobListingOut, JobMatchOut, MarketSkillsOut, RoadmapStatus } from '@/types/contracts';
 
 let sessionToken: string | null = null;
 let sessionStudentId: number | null = null;
@@ -13,7 +13,7 @@ export const session = {
   takeTarget() { const target = selectedTarget; selectedTarget = null; return target; },
   clear() { sessionToken = null; sessionStudentId = null; selectedTarget = null; },
 };
-export interface LoginResponse { access_token: string; token_type: string; expires_in: number; role: "admin" | "student"; student_id: number | null }
+export type LoginResponse = import('@/types/contracts').AuthSessionOut;
 
 export class ApiError extends Error {
   constructor(
@@ -65,6 +65,7 @@ export async function request<T>(path: string, init: RequestInit = {}, timeoutMs
 }
 
 export const api = {
+  demoSession: () => request<LoginResponse>('/api/auth/demo-session', { method: 'POST' }),
   login: (username: string, password: string) => request<LoginResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   health: () => request<HealthOut>('/api/health', {}, 5000),
 };
@@ -74,24 +75,22 @@ export function fileForm(asset: DocumentPickerAsset, fields: Record<string, stri
   const form = new FormData();
   Object.entries(fields).forEach(([name, value]) => form.append(name, value));
   if (asset.file) form.append('file', asset.file, asset.name);
-  else form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain') } as unknown as Blob);
+  else form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : asset.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain') } as unknown as Blob);
   return form;
 }
 export const resumeApi = {
+  candidate: (id: number) => request<import('@/types/contracts').CandidateExtractionOut>(`/api/resumes/${id}/candidate-profile`),
   list: () => request<ResumeWorkspaceOut[]>('/api/resumes'),
   get: (id: number) => request<ResumeWorkspaceOut>(`/api/resumes/${id}`),
   create: (text: string, storage_consent: boolean) => jsonPost<ResumeWorkspaceOut>('/api/resumes', { text, storage_consent }),
   upload: (asset: DocumentPickerAsset, consent: boolean) => request<ResumeWorkspaceOut>('/api/resumes/upload', { method: 'POST', body: fileForm(asset, { storage_consent: String(consent) }) }),
-  analyze: (id: number, body: ResumeTargetIn) => jsonPost<ResumeWorkspaceOut>(`/api/resumes/${id}/analyze`, body),
+  analyze: (id: number, body: ResumeTargetIn) => request<ResumeWorkspaceOut>(`/api/resumes/${id}/analyze`, { method: 'POST', body: JSON.stringify(body) }, 75000),
   decide: (id: number, suggestion: string, version: number, decision: 'accepted' | 'rejected' | 'pending', confirmation: string) => request<ResumeWorkspaceOut>(`/api/resumes/${id}/suggestions/${suggestion}`, { method: 'PATCH', body: JSON.stringify({ version, decision, confirmation }) }),
   apply: (id: number, version: number) => jsonPost<ResumeWorkspaceOut>(`/api/resumes/${id}/apply`, { version }),
   save: (id: number, version: number, text: string, factual_confirmation: boolean) => request<ResumeWorkspaceOut>(`/api/resumes/${id}/revision`, { method: 'PUT', body: JSON.stringify({ version, text, factual_confirmation }) }),
   restore: (id: number, version: number) => jsonPost<ResumeWorkspaceOut>(`/api/resumes/${id}/restore`, { version }),
   remove: (id: number, version: number) => request<{ deleted: boolean }>(`/api/resumes/${id}?version=${version}`, { method: 'DELETE' }),
   export: (id: number, version: number, format: 'docx' | 'txt', final_review_confirmed: boolean) => request<ArrayBuffer>(`/api/resumes/${id}/export`, { method: 'POST', body: JSON.stringify({ version, format, final_review_confirmed }) }, API_TIMEOUT_MS, true),
-};
-export const workspaceApi = {
-  clearSessionData: () => request<{ deleted: boolean }>('/api/workspace/session-data', { method: 'DELETE' }),
 };
 export const linkedinApi = {
   analyze: (target_role: LinkedInTargetRole, job_description: string) => request<LinkedInAnalysisOut>('/api/profile/linkedin/analyze', { method: 'POST', body: JSON.stringify({ target_role, job_description }) }),
@@ -125,7 +124,6 @@ export const jobsApi = {
   detail: (id: number) => request<JobListingOut>(`/api/jobs/${id}`),
   match: (id: number, student_id: number) => jsonPost<JobMatchOut>(`/api/jobs/${id}/match`, { student_id }),
   market: (search_id: string) => request<MarketSkillsOut>(`/api/market/skills?search_id=${search_id}`),
-  advice: (id: number, student_id: number, text: string) => jsonPost<ResumeAdviceOut>(`/api/jobs/${id}/resume-advice`, { student_id, text }),
   roadmap: (student_id: number, analysis_id: number) => request<RoadmapItemOut[]>(`/api/roadmap/${student_id}/analysis/${analysis_id}`, {}, 120000),
   progress: (item_id: number, status: RoadmapStatus, completion_evidence?: string) => request<RoadmapItemOut>(`/api/roadmap/items/${item_id}`, { method: 'PATCH', body: JSON.stringify({ status, completion_evidence }) }),
 };
@@ -144,14 +142,9 @@ export const marketApi = {
     return request<MarketCompareOut>(`/api/market/skills/compare?${query}`);
   },
 };
-export function uploadResume(jobId: number, studentId: number, asset: DocumentPickerAsset) {
-  const form = new FormData();
-  form.append('student_id', String(studentId));
-  if (asset.file) form.append('file', asset.file, asset.name);
-  else form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain') } as unknown as Blob);
-  return request<ResumeUploadOut>(`/api/jobs/${jobId}/resume-upload`, { method: 'POST', body: form });
-}
 export const careerApi = {
+  previewInput: (asset: DocumentPickerAsset) => request<import('@/types/contracts').JourneyPreviewOut>('/api/journey/input/preview', { method: 'POST', body: fileForm(asset, {}) }),
+  saveInput: (body: import('@/types/contracts').JourneySaveIn) => jsonPost<ProfileOut>('/api/journey/input/save', body),
   seed: () => jsonPost<{ student_id: number; job_id: number; synthetic: boolean }>('/api/demo/seed', {}),
   profile: (id: number) => request<ProfileOut>(`/api/profile/${id}`),
   role: (id: number) => jsonPost<JobOut>('/api/job/analyze', { seeded_job_id: id }),

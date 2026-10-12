@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app import __version__
 from app.config import get_settings
 from app.db import SessionLocal, init_db, get_db
-from app.schemas import (HealthOut, ResourceSearchIn, ResourceSearchOut, ErrorBody, ProfileOut,
+from app.schemas import (AuthSessionOut, HealthOut, ResourceSearchIn, ResourceSearchOut, ErrorBody, ProfileOut,
                          JobOut, JobAnalyzeIn, SkillGapAnalyzeIn, AnalysisOut, RoadmapItemOut,
                          AssessmentSubmitIn, AssessmentOut, DashboardOut)
 from app import models
@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def workspace_validation(request: Request, exc: RequestValidationError):
-        if request.url.path.startswith(('/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks')):
+        if request.url.path.startswith(('/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
             first = exc.errors()[0]
             field = '.'.join(str(part) for part in first['loc'] if part not in {'body', 'query'})
             # Never echo uploaded resume/profile input (including invalid Unicode).
@@ -60,7 +60,7 @@ def create_app() -> FastAPI:
     @app.middleware('http')
     async def private_workspace_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith(('/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks')):
+        if request.url.path.startswith(('/api/auth', '/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
             response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -91,7 +91,28 @@ def create_app() -> FastAPI:
                 "code": exc.code, "message": exc.message, "retryable": exc.retryable,
             })
 
-    @app.post("/api/auth/login", tags=["auth"])
+    @app.post('/api/auth/demo-session', response_model=AuthSessionOut, tags=['auth'])
+    def demo_session(request: Request, db: Session = Depends(get_db)):
+        cfg = get_settings()
+        # Temporary local convenience: never grant admin access or enable in production.
+        if not cfg.demo_login_bypass or cfg.app_env != 'development':
+            raise HTTPException(404, detail={'code': 'DEMO_LOGIN_DISABLED',
+                                            'message': 'Automatic demo entry is disabled'})
+        if not request.client or request.client.host not in {'127.0.0.1', '::1'}:
+            raise HTTPException(403, detail={'code': 'LOCAL_DEMO_ONLY',
+                                            'message': 'Automatic demo entry is available on this computer only'})
+        # Check signing configuration before creating records.
+        if not cfg.auth_signing_key or len(cfg.auth_signing_key.get_secret_value()) < 32:
+            raise HTTPException(503, detail={'code': 'AUTH_NOT_CONFIGURED',
+                                            'message': 'Server authentication is not configured'})
+        student, _ = seed_demo(db)
+        if not student.is_synthetic:
+            raise HTTPException(403, detail={'code': 'ACCOUNT_DISABLED',
+                                            'message': 'Demo account is unavailable'})
+        return AuthSessionOut(access_token=issue_token(Principal('student', student.id)),
+                              role='student', student_id=student.id)
+
+    @app.post("/api/auth/login", response_model=AuthSessionOut, tags=["auth"])
     def login(payload: dict, db: Session = Depends(get_db)):
         username, password = payload.get("username"), payload.get("password")
         if not isinstance(username, str) or not isinstance(password, str):

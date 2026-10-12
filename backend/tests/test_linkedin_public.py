@@ -99,11 +99,11 @@ def test_lookup_preview_review_cache_isolation_and_analysis(workspace, monkeypat
     updated = client.put('/api/profile/linkedin', json={**body,'confirmed':True})
     assert updated.status_code == 200 and updated.json()['import_method'] == 'public_search_reviewed'
     analysis = analyzed(client, client.get(f'/api/resumes/{resume["id"]}').json())['analysis']
-    sql = next(skill for skill in analysis['unified_skills'] if skill['name']=='SQL')
-    assert any(source['source']=='linkedin_public_search_reviewed' for source in sql['sources'])
-    assert not sql['proficiency_assessed'] and sql['profile_level'] == 2  # Existing self-reported seed level is preserved.
-    docker = next(skill for skill in analysis['unified_skills'] if skill['name']=='Docker')
-    assert not docker['proficiency_assessed'] and docker['profile_level'] is None
+    assert analysis['engine'] == 'gemini'
+    profile = client.get(f'/api/resumes/{resume["id"]}/candidate-profile').json()
+    sql = next(skill for skill in profile['skills'] if skill['name'] == 'SQL')
+    assert any(source['source'] == 'linkedin_public_search_reviewed' for source in sql['sources'])
+    assert sql['level'] is None
     assert client.delete('/api/profile/linkedin').status_code == 200
     assert client.get('/api/profile/linkedin/public-search').json() is None
 

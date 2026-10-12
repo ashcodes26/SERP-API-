@@ -2,10 +2,12 @@
 from datetime import date, datetime, timezone
 from pathlib import PurePath
 from typing import Literal
+from threading import Lock
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import Response, HTMLResponse
-from sqlalchemy import delete, select, update, func
+from starlette.concurrency import run_in_threadpool
+from sqlalchemy import select, update, func
 from sqlalchemy.orm import Session
 
 from app import models, schemas as s
@@ -19,10 +21,11 @@ from app.services import linkedin, linkedin_public
 from app.config import get_settings
 
 router = APIRouter(prefix='/api', tags=['private career workspace'])
+_RESUME_ANALYSIS_LOCK = Lock()
 
 
-def error(status, code, message):
-    raise HTTPException(status, detail={'code': code, 'message': message, 'retryable': False})
+def error(status, code, message, retryable=False):
+    raise HTTPException(status, detail={'code': code, 'message': message, 'retryable': retryable})
 
 
 def owner(principal: Principal = Depends(current_principal), db: Session = Depends(get_db)) -> models.Student:
@@ -32,6 +35,30 @@ def owner(principal: Principal = Depends(current_principal), db: Session = Depen
     if result is None:
         error(404, 'STUDENT_NOT_FOUND', 'Student not found')
     return result
+
+
+@router.post('/journey/input/preview', response_model=s.JourneyPreviewOut)
+async def journey_preview(file: UploadFile = File(...), db: Session = Depends(get_db), student=Depends(owner)):
+    from app.services import journey_input
+    content = await file.read(1024 * 1024 + 1)
+    await file.close()
+    if len(content) > 1024 * 1024:
+        error(413, 'FILE_TOO_LARGE', 'Choose a CSV/XLSX file up to 1 MiB')
+    try:
+        details, ignored = journey_input.parse(file.filename or '', content)
+    except ValueError as exc:
+        error(422, 'INVALID_SPREADSHEET', str(exc))
+    return s.JourneyPreviewOut(details=details, ignored_columns=ignored, profile_digest=journey_input.digest(db, student))
+
+
+@router.post('/journey/input/save', response_model=s.ProfileOut)
+def journey_save(body: s.JourneySaveIn, db: Session = Depends(get_db), student=Depends(owner)):
+    from app.services import journey_input
+    if not body.confirmed:
+        error(422, 'REVIEW_REQUIRED', 'Review and confirm these are your own details before saving')
+    if body.profile_digest != journey_input.digest(db, student):
+        error(409, 'PROFILE_CHANGED', 'Your profile changed. Upload again to review the latest version')
+    return journey_input.save(db, student, body.details)
 
 
 def owned(db, model, item_id, student):
@@ -73,7 +100,8 @@ def readable(text):
 
 async def uploaded(file):
     try:
-        return parse_resume(await file.read(MAX_RESUME_BYTES + 1), file.filename or '', file.content_type)
+        data = await file.read(MAX_RESUME_BYTES + 1)
+        return await run_in_threadpool(parse_resume, data, file.filename or '', file.content_type)
     except SearchFailure as exc:
         error(exc.status, exc.code, exc.message)
     finally:
@@ -83,9 +111,13 @@ async def uploaded(file):
 def create_resume(db, student, text, consent, filename='pasted-resume.txt'):
     if not consent:
         error(422, 'CONSENT_REQUIRED', 'Consent to private storage is required; you can delete the saved resume at any time')
+    text = readable(text)
+    existing = db.scalar(select(models.ResumeWorkspace).where(models.ResumeWorkspace.student_pk == student.id,
+                                                            models.ResumeWorkspace.original_text == text))
+    if existing is not None:
+        return existing
     if db.scalar(select(func.count()).select_from(models.ResumeWorkspace).where(models.ResumeWorkspace.student_pk == student.id)) >= 20:
         error(422, 'WORKSPACE_LIMIT', 'Delete an older resume before saving another (limit 20)')
-    text = readable(text)
     item = models.ResumeWorkspace(student_pk=student.id, filename=PurePath(filename.replace('\\', '/')).name[:200], original_text=text,
                                   revised_text=text, target={}, decisions={})
     db.add(item); db.commit(); db.refresh(item)
@@ -114,6 +146,18 @@ def resume_get(item_id: int, db: Session = Depends(get_db), student=Depends(owne
     return owned(db, models.ResumeWorkspace, item_id, student)
 
 
+@router.get('/resumes/{item_id}/candidate-profile', response_model=s.CandidateExtractionOut)
+def candidate_profile(item_id: int, db: Session = Depends(get_db), student=Depends(owner)):
+    from app.services.candidate_profile import extract_profile
+    item = owned(db, models.ResumeWorkspace, item_id, student)
+    linked = db.get(models.LinkedInProfile, student.id)
+    sources = [(item.revised_text, 'resume_saved_revision', False)]
+    if linked and linked.profile_text:
+        source = 'linkedin_public_search_reviewed' if linked.import_method == 'public_search_reviewed' else 'linkedin_' + linked.import_method
+        sources.append((linked.profile_text, source, linked.confirmed))
+    return extract_profile(sources, now())
+
+
 @router.delete('/resumes/{item_id}')
 def resume_delete(item_id: int, version: int = Query(ge=1), db: Session = Depends(get_db), student=Depends(owner)):
     item = owned(db, models.ResumeWorkspace, item_id, student); check_version(item, version)
@@ -121,21 +165,19 @@ def resume_delete(item_id: int, version: int = Query(ge=1), db: Session = Depend
     return {'deleted': True}
 
 
-@router.delete('/workspace/session-data')
-def clear_session_data(db: Session = Depends(get_db), student=Depends(owner)):
-    """Remove private uploads and derived analysis when a student signs out."""
-    db.execute(delete(models.ResumeWorkspace).where(models.ResumeWorkspace.student_pk == student.id))
-    db.execute(delete(models.LinkedInAuthorization).where(models.LinkedInAuthorization.student_pk == student.id))
-    db.execute(delete(models.LinkedInPublicLookup).where(models.LinkedInPublicLookup.student_pk == student.id))
-    db.execute(delete(models.LinkedInProfile).where(models.LinkedInProfile.student_pk == student.id))
-    db.execute(delete(models.RoadmapItem).where(models.RoadmapItem.student_pk == student.id))
-    db.execute(delete(models.Analysis).where(models.Analysis.student_pk == student.id))
-    db.commit()
-    return {'deleted': True}
-
-
 @router.post('/resumes/{item_id}/analyze', response_model=s.ResumeWorkspaceOut)
 def resume_analyze(item_id: int, body: s.ResumeTargetIn, db: Session = Depends(get_db), student=Depends(owner)):
+    # Serialize analysis in this demo process, including version check and commit.
+    # A duplicate in-flight request never makes a second provider call.
+    if not _RESUME_ANALYSIS_LOCK.acquire(blocking=False):
+        error(429, 'ANALYSIS_BUSY', 'Resume analysis is busy. Wait for the current request before retrying.')
+    try:
+        return _resume_analyze(item_id, body, db, student)
+    finally:
+        _RESUME_ANALYSIS_LOCK.release()
+
+
+def _resume_analyze(item_id, body, db, student):
     item = owned(db, models.ResumeWorkspace, item_id, student); check_version(item, body.version)
     title, description, source, url = body.title.strip(), body.description.strip(), 'user_provided', None
     if body.job_id:
@@ -148,7 +190,12 @@ def resume_analyze(item_id: int, body: s.ResumeTargetIn, db: Session = Depends(g
         url = str(listing.source_url) if listing.source_url else None
     if len(description.strip()) < 30:
         error(422, 'DESCRIPTION_INCOMPLETE', 'The listing has insufficient description text. Paste the complete description instead.')
-    analysis = enhancer.analyze_resume(db, student, item.original_text, title, description, source, url)
+    if not body.ai_consent:
+        error(422, 'AI_CONSENT_REQUIRED', 'Review the Google data-use notice and consent before requesting Gemini analysis.')
+    from app.services.gemini_resume import review
+    ai_review, suggestions = review(item.original_text, description, True)
+    analysis = s.ResumeAnalysisOut(ai_review=ai_review, suggestions=suggestions,
+        target_title=title, target_source=source, source_url=url)
     return change(db, item, body.version, {'target': {'job_id': body.job_id, 'title': title, 'description': description, 'source': source, 'source_url': url},
                                          'analysis': analysis.model_dump(mode='json'), 'decisions': {}})
 
@@ -156,14 +203,12 @@ def resume_analyze(item_id: int, body: s.ResumeTargetIn, db: Session = Depends(g
 @router.patch('/resumes/{item_id}/suggestions/{suggestion_id}', response_model=s.ResumeWorkspaceOut)
 def decision(item_id: int, suggestion_id: str, body: s.ResumeDecisionIn, db: Session = Depends(get_db), student=Depends(owner)):
     item = owned(db, models.ResumeWorkspace, item_id, student)
+    if (item.analysis or {}).get('engine') != 'gemini':
+        error(422, 'ANALYSIS_REQUIRED', 'Run Gemini analysis before reviewing edits.')
     suggestion = next((x for x in (item.analysis or {}).get('suggestions', []) if x['id'] == suggestion_id), None)
     if suggestion is None:
         error(404, 'SUGGESTION_NOT_FOUND', 'Analyze this resume before reviewing the suggestion')
     confirmation = body.confirmation.strip()
-    if body.decision == 'accepted' and suggestion['kind'] == 'append':
-        detected = {x.name for x in extract_requirements(confirmation)}
-        if len(confirmation) < 12 or suggestion['skill'] not in detected:
-            error(422, 'FACTUAL_EVIDENCE_REQUIRED', 'Describe your actual work with this skill before adding it; no experience or metrics will be invented')
     decisions = dict(item.decisions)
     decisions[suggestion_id] = {'decision': body.decision, 'confirmation': confirmation}
     return change(db, item, body.version, {'decisions': decisions})
@@ -172,7 +217,7 @@ def decision(item_id: int, suggestion_id: str, body: s.ResumeDecisionIn, db: Ses
 @router.post('/resumes/{item_id}/apply', response_model=s.ResumeWorkspaceOut)
 def apply(item_id: int, body: s.ResumeVersionIn, db: Session = Depends(get_db), student=Depends(owner)):
     item = owned(db, models.ResumeWorkspace, item_id, student)
-    if not item.analysis:
+    if not item.analysis or item.analysis.get('engine') != 'gemini':
         error(422, 'ANALYSIS_REQUIRED', 'Analyze the resume first')
     try:
         revision = enhancer.approved_revision(item)

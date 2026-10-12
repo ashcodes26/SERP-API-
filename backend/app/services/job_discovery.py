@@ -13,8 +13,7 @@ from pydantic import HttpUrl, TypeAdapter, ValidationError
 from app import models
 from app.config import Settings
 from app.schemas import (JobListingOut, JobMatchOut, JobSearchIn, JobSearchOut,
-                         MarketSkillOut, MarketSkillsOut, ObservedRequirement,
-                         ResumeAdviceOut)
+                         MarketSkillOut, MarketSkillsOut, ObservedRequirement)
 from app.services.analysis import analyze, get_profile
 from app.services.intelligence import known_skill_terms
 from app.services.serpapi import SearchFailure, request_search
@@ -53,7 +52,7 @@ def source_url(value: object) -> str | None:
         return None
 
 
-def extract_requirements(description: str) -> list[ObservedRequirement]:
+def extract_requirements(description: str, *, allow_ambiguous_aliases: bool = False) -> list[ObservedRequirement]:
     """Dictionary matches only; qualifiers and levels must occur in source text."""
     findings: dict[str, ObservedRequirement] = {}
     section = 'mentioned'
@@ -75,7 +74,7 @@ def extract_requirements(description: str) -> list[ObservedRequirement]:
         if re.search(r'\b(not required|no experience (?:with|in)|we (?:will )?teach)\b', line, re.I):
             kind = 'mentioned'
         for term, (name, _) in known_skill_terms().items():
-            if term in {'py', 'js', 'ml'}:  # ambiguous prose abbreviations
+            if term in {'py', 'js', 'ml'} and not allow_ambiguous_aliases:  # accept only in an explicitly labelled candidate skills section
                 continue
             if not re.search(r'(?<!\w)' + re.escape(term) + r'(?!\w)', line, re.I):
                 continue
@@ -271,23 +270,3 @@ def market_skills(db: Session, search_id: str) -> MarketSkillsOut | None:
          required_count=required[name], preferred_count=preferred[name], share=round(count / size, 4))
          for name, count in counts.most_common()], warnings=['This is one retrieved search page, not a market-wide survey.',
          'Keyword extraction uses a limited dictionary; omitted skills are not evidence of no demand.'])
-
-
-def resume_advice(db: Session, student: models.Student, listing: JobListingOut, text: str) -> ResumeAdviceOut:
-    competencies = get_profile(db, student).competencies
-    evidenced = {c.skill.canonical_name for c in competencies if c.evidence_ids and c.level is not None and c.level > 0}
-    resume_skills = {s.name for s in extract_requirements(text)}
-    relevant = {s.name for s in listing.skills if s.requirement_type != 'mentioned'}
-    supported = sorted(relevant & evidenced - resume_skills)
-    unsupported = sorted(relevant - evidenced)
-    suggestions = [f'If accurate, make your documented {skill} experience visible in the resume.' for skill in supported]
-    suggestions += [f'{skill} is relevant, but your profile does not substantiate it. Build evidence before adding a claim.' for skill in unsupported]
-    for heading in ('education', 'projects', 'experience', 'skills'):
-        if not re.search(r'\b' + heading + r'\b', text, re.I):
-            suggestions.append(f'Review whether a {heading} section would help explain your actual evidence.')
-    if not re.search(r'\b\d+(?:\.\d+)?\s*(?:%|users|hours|records|seconds|projects)\b', text, re.I):
-        suggestions.append('Where you have measured outcomes, describe the result and your contribution. Do not invent numbers.')
-    suggestions.append('For each relevant project, explain what you built, the tools you used, and a result you can substantiate.')
-    return ResumeAdviceOut(supported_keywords=supported, unsubstantiated_keywords=unsupported, suggestions=suggestions,
-         limitations=['Text-only feedback; formatting, document parsing, and proprietary ATS compatibility are not evaluated.',
-                      'Resume text is processed for this request and is not stored or sent to SerpApi.'])

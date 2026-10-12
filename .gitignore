@@ -13,6 +13,8 @@ dist/
 .DS_Store
 mobile/.preview-chrome/
 mobile/.market-browser/
+mobile/.ui-qa/
 docs/.workspace-downloads/
 mobile/expo-env.d.ts
 *.tsbuildinfo
+backend/models/

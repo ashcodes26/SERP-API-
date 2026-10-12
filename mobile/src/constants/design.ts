@@ -1,7 +1,9 @@
-/** Shared midnight, blue-violet workspace theme. */
+import { palette as p } from './palette';
+
+/** Dark Void: electric iris actions, restrained saffron highlights. */
 export const design = {
-  canvas: '#070b19', surface: 'transparent', elevated: 'transparent',
-  border: '#2a3564', strongBorder: '#6576bc', text: '#f8f9ff',
-  body: '#d8e0ff', muted: '#9ba9d0', accent: '#836cff',
-  error: '#ffb4c0', radius: 20, controlRadius: 12,
+  canvas: p.void, surface: p.carbon, elevated: p.obsidian,
+  border: p.graphite, strongBorder: p.smoke, text: p.paper,
+  body: p.mist, muted: p.fog, accent: p['electric-iris'], highlight: p.saffron, success: p.verdant,
+  error: p['coral-red'], radius: 24, controlRadius: 24,
 } as const;

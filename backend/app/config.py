@@ -13,10 +13,14 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./aimora.db"
     cors_origins: str = "http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006,http://127.0.0.1:19006"
     max_upload_mb: int = 5
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = 'gemini-3.5-flash-lite'
+    gemini_timeout_seconds: float = Field(default=30, ge=1, le=45)
 
     auth_signing_key: SecretStr | None = None
     admin_password: SecretStr | None = None
     demo_password: SecretStr | None = None
+    demo_login_bypass: bool = False
     import_retention_hours: int = 24
 
     linkedin_client_id: str = ''

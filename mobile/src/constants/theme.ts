@@ -53,14 +53,14 @@ export const Fonts = Platform.select({
 });
 
 export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
+  half: 3,
+  one: 6,
+  two: 12,
+  three: 18,
   four: 24,
-  five: 32,
-  six: 64,
+  five: 36,
+  six: 60,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 1200;
+export const MaxContentWidth = 1280;

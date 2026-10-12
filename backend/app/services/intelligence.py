@@ -1,30 +1,15 @@
 """Deterministic role alignment v1. Unknown proficiency is not zero."""
 import re
+import json
+from pathlib import Path
 from dataclasses import dataclass
 from app.enums import Priority, RequirementType
 from app.schemas import Competency, JobOut, ReadinessOut, SkillGapOut, SkillOut
 
 FORMULA_VERSION = 'role-alignment-v1'
-_ALIASES = {
-    'python': ('Python', 'Programming'),
-    'py': ('Python', 'Programming'),
-    'sql': ('SQL', 'Databases'),
-    'structured query language': ('SQL', 'Databases'),
-    'postgres': ('PostgreSQL', 'Databases'),
-    'postgresql': ('PostgreSQL', 'Databases'),
-    'js': ('JavaScript', 'Programming'),
-    'javascript': ('JavaScript', 'Programming'),
-    'java script': ('JavaScript', 'Programming'),
-    'ml': ('Machine Learning', 'AI'),
-    'machine learning': ('Machine Learning', 'AI'),
-    'pandas': ('Pandas', 'Data'),
-    'docker': ('Docker', 'DevOps'),
-    'aws': ('AWS', 'Cloud'),
-    'amazon web services': ('AWS', 'Cloud'),
-    'git': ('Git', 'Tools'),
-    'data structures and algorithms': ('DSA', 'Fundamentals'),
-    'dsa': ('DSA', 'Fundamentals'),
-}
+_ALIASES = {alias.casefold(): (item['name'], item['category'])
+            for item in json.loads(Path(__file__).with_name('skills_taxonomy.json').read_text(encoding='utf-8'))
+            for alias in [item['name'], *item['aliases']]}
 
 def normalize_skill(value: str) -> tuple[str, str | None]:
     key = re.sub(r'\s+', ' ', value.strip()).casefold()

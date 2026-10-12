@@ -176,10 +176,7 @@ def test_api_match_market_resume_roadmap_and_progress_history(database, monkeypa
         assert python['count'] == 2 and python['share'] == 1 and python['required_count'] == 2
         advice = api.post(f'/api/jobs/{sample.jobs[0].id}/resume-advice', json={
             'student_id': ids['student_id'], 'text': 'Education: engineering. Projects: built a data application.'})
-        assert advice.status_code == 200
-        assert 'Python' in advice.json()['supported_keywords']
-        assert 'Docker' in advice.json()['unsubstantiated_keywords']
-        assert 'not stored' in advice.json()['limitations'][1]
+        assert advice.status_code == 404
         aid = out['analysis']['id']
         url = f'/api/roadmap/{ids["student_id"]}/analysis/{aid}'
         tasks = api.get(url).json()
@@ -215,4 +212,4 @@ def test_api_validation_authentication_ownership_and_insufficient_evidence(datab
         auth = api.post('/api/auth/login', json={'username': 'demo', 'password': 'fixture-password'}).json()
         headers = {'Authorization': f'Bearer {auth["access_token"]}'}
         assert api.post(f'/api/jobs/{sample.jobs[0].id}/match', json={'student_id': ids['student_id'] + 1}, headers=headers).status_code == 403
-        assert api.post(f'/api/jobs/{sample.jobs[0].id}/resume-advice', json={'student_id': ids['student_id'] + 1, 'text': 'A resume containing private evidence text.'}, headers=headers).status_code == 403
+        assert api.post(f'/api/jobs/{sample.jobs[0].id}/resume-advice', json={'student_id': ids['student_id'] + 1, 'text': 'A resume containing private evidence text.'}, headers=headers).status_code == 404

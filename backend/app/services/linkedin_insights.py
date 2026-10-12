@@ -23,7 +23,7 @@ EXTRA_TERMS = {
 }
 # Curated coaching templates, not live labour-market measurements.
 ROLES = {
-    'Data Analyst': ['SQL', 'Excel', 'Python', 'Data Visualization', 'Statistics'],
+    'Data Analyst': ['SQL', 'Microsoft Excel', 'Python', 'Data Visualization', 'Statistics'],
     'Machine Learning Engineer': ['Python', 'Machine Learning', 'Scikit-learn', 'Statistics', 'Docker'],
     'Full Stack Developer': ['JavaScript', 'TypeScript', 'React', 'Node.js', 'SQL'],
     'Backend Developer': ['Python', 'SQL', 'REST APIs', 'Git', 'Docker'],
@@ -60,7 +60,7 @@ def skills_in(line):
     # A negative/hypothetical sentence cannot establish possession of any skill.
     if NEGATED.search(line): return []
     clean = LINK.sub('', line)  # URLs and source metadata are not skill evidence.
-    terms = {key: value[0] for key, value in known_skill_terms().items()} | EXTRA_TERMS
+    terms = EXTRA_TERMS | {key: value[0] for key, value in known_skill_terms().items()}
     return sorted({name for term, name in terms.items() if re.search(r'(?<!\w)' + re.escape(term) + r'(?!\w)', clean, re.I)})
 
 

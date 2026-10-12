@@ -7,11 +7,12 @@ from app.auth import Principal, allow_student, current_principal
 from app.config import get_settings
 from app.db import get_db
 from app.schemas import (JobListingOut, JobMatchIn, JobMatchOut, JobSearchIn, JobSearchOut,
-                         MarketSkillsOut, ResumeAdviceIn, ResumeAdviceOut, RoadmapItemOut,
+                         MarketSkillsOut, RoadmapItemOut,
                          RoadmapProgressIn)
-from app.schemas import MarketFilter, MarketDemandOut, MarketCompareOut, MarketMeOut, MarketScopeOut, ResumeUploadOut
+from app.schemas import MarketFilter, MarketDemandOut, MarketCompareOut, MarketMeOut, MarketScopeOut
 from app.services import market as insights
 from app.services.resume_files import parse_resume, MAX_RESUME_BYTES
+from starlette.concurrency import run_in_threadpool
 from app.services import job_discovery as service
 from app.services.learning import create_roadmap
 from app.services.serpapi import SearchFailure
@@ -98,27 +99,6 @@ def market_me(filters: MarketFilter = Depends(), db: Session = Depends(get_db), 
         return insights.personal(db, selected, filters)
     except SearchFailure as exc:
         failure(exc)
-
-
-@router.post('/jobs/{job_id}/resume-upload', response_model=ResumeUploadOut)
-async def resume_upload(job_id: int, student_id: int = Form(gt=0), file: UploadFile = File(),
-                        db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
-    selected = student(db, principal, student_id)
-    job = listing(db, job_id)
-    try:
-        data = await file.read(MAX_RESUME_BYTES + 1)
-        text = parse_resume(data, file.filename or '', file.content_type)
-        return ResumeUploadOut(filename=(file.filename or '').replace('\\', '/').split('/')[-1][:200],
-            extracted_character_count=len(text), advice=service.resume_advice(db, selected, job, text))
-    except SearchFailure as exc:
-        failure(exc)
-    finally:
-        await file.close()
-
-
-@router.post('/jobs/{job_id}/resume-advice', response_model=ResumeAdviceOut)
-def advice(job_id: int, request: ResumeAdviceIn, db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
-    return service.resume_advice(db, student(db, principal, request.student_id), listing(db, job_id), request.text)
 
 
 @router.get('/roadmap/{student_id}/analysis/{analysis_id}', response_model=list[RoadmapItemOut])

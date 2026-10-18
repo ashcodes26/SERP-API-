@@ -1,27 +1,40 @@
 from io import BytesIO
+import zipfile
 
-from openpyxl import Workbook
 from app import models
 from app.auth import Principal, current_principal
 from app.main import app
 from app.services.journey_input import parse
 from test_workspace import workspace  # noqa: F401
 
-CSV = b'name,program,semester,cgpa,skills,summary,email,student_id\nAlex Synthetic,BSc,4,8.5,Python;JavaScript,Example supplied career summary,changed@example.org,foreign-id\n'
+
+def docx(text: str) -> bytes:
+    document = ('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                '<w:body>' + ''.join(f'<w:p><w:r><w:t>{line}</w:t></w:r></w:p>' for line in text.splitlines()) +
+                '</w:body></w:document>')
+    content = BytesIO()
+    with zipfile.ZipFile(content, 'w') as archive:
+        archive.writestr('word/document.xml', document)
+    return content.getvalue()
 
 
-def upload(client, content=CSV, filename='profile.csv'):
+DOCX = docx('Name: Alex Synthetic\nSkills\nPython, JavaScript\nBuilt a career project with Python.')
+
+
+def upload(client, content=DOCX, filename='profile.docx'):
     return client.post('/api/journey/input/preview', files={'file': (filename, content)})
 
 
-def test_csv_preview_save_is_owned_reviewed_and_preserves_assessments(workspace):
+def test_docx_preview_save_is_owned_reviewed_and_preserves_assessments(workspace):
     client, factory, ids = workspace
     before = client.get(f'/api/profile/{ids[0]}').json()
     response = upload(client)
     assert response.status_code == 200
     assert response.headers['cache-control'] == 'no-store'
     preview = response.json()
-    assert preview['ignored_columns'] == ['email', 'student_id']
+    assert preview['ignored_columns'] == []
+    assert preview['details']['name'] == 'Alex Synthetic'
+    assert 'Python' in preview['details']['skills']
     assert client.get(f'/api/profile/{ids[0]}').json() == before
     body = {**{key: preview[key] for key in ('details', 'profile_digest')}, 'confirmed': False}
     assert client.post('/api/journey/input/save', json=body).status_code == 422
@@ -41,27 +54,29 @@ def test_csv_preview_save_is_owned_reviewed_and_preserves_assessments(workspace)
     with factory() as db:
         assert db.get(models.Student, ids[1]).name == 'Other synthetic student'
     assert client.post('/api/journey/input/save', json=body).status_code == 409
-    # Repeating the same reviewed file does not duplicate evidence.
     again = upload(client).json()
     result = client.post('/api/journey/input/save', json={'details': again['details'], 'profile_digest': again['profile_digest'], 'confirmed': True})
     assert len(result.json()['evidence']) == len(saved['evidence'])
 
 
-def test_excel_and_aliases_are_real_parsed_input():
-    workbook = Workbook()
-    workbook.active.append(['Full Name', 'Degree', 'Skills', 'CGPA'])
-    workbook.active.append(['Taylor Synthetic', 'BSc', 'JS|SQL', 7.5])
-    content = BytesIO(); workbook.save(content)
-    details, ignored = parse('profile.xlsx', content.getvalue())
-    assert details.name == 'Taylor Synthetic' and details.cgpa == 7.5
-    assert details.skills == ['JS', 'SQL'] and ignored == []
+def test_docx_input_extracts_name_and_skills():
+    details, ignored = parse('profile.docx', docx('Name: Taylor Synthetic\nSkills\nJavaScript, SQL'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    assert details.name == 'Taylor Synthetic'
+    assert set(details.skills) >= {'JavaScript', 'SQL'} and ignored == []
 
 
-def test_invalid_files_and_ranges_are_rejected_without_profile_changes(workspace):
+def test_docx_uses_validated_filename_when_picker_reports_legacy_mime():
+    details, _ = parse('profile.docx', DOCX, 'application/msword')
+    assert details.name == 'Alex Synthetic'
+
+
+def test_invalid_documents_are_rejected_without_profile_changes(workspace):
     client, _, ids = workspace
     before = client.get(f'/api/profile/{ids[0]}').json()
-    for data, filename in [(CSV, 'profile.xls'), (b'invalid', 'profile.xlsx'), (b'name,cgpa\nAlex,12\n', 'profile.csv'), (b'name\nAlex\nTaylor\n', 'profile.csv'), (b'unknown\nvalue\n', 'profile.csv'), (b'name,full name\nAlex,Taylor\n', 'profile.csv')]:
-        assert upload(client, data, filename).status_code == 422
+    for data, filename in [(DOCX, 'profile.doc'), (b'invalid', 'profile.docx'), (b'name,cgpa\nAlex,12\n', 'profile.csv'), (DOCX, 'profile.pdf')]:
+        response = upload(client, data, filename)
+        assert response.status_code == 422
+        assert response.json()['detail']['code'] in {'INVALID_DOCUMENT', 'RESUME_PARSE_FAILED'}
     assert upload(client, b'a' * (1024 * 1024 + 1)).status_code == 413
     assert client.get(f'/api/profile/{ids[0]}').json() == before
 

@@ -9,6 +9,7 @@ import { api, ApiError, session } from '@/api/client';
 import { AuthContext } from '@/context/auth';
 import { readSession, saveSession } from '@/utils/session-storage';
 import { homePath, permittedPath } from '@/utils/role-routing';
+import { sessionRestoreAction } from '@/utils/session-restore';
 import { design as d } from '@/constants/design';
 import AppNavigation from '@/components/app-navigation';
 import type { AccountOut, AuthSessionOut } from '@/types/contracts';
@@ -49,7 +50,7 @@ export default function RootLayout() {
           }
         }
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) { session.clear(); await saveSession(null); }
+        if (sessionRestoreAction(err instanceof ApiError ? err.status : undefined) === 'clear_session') { session.clear(); await saveSession(null); }
         else if (active) setError(err instanceof Error ? err.message : 'Could not restore session');
       } finally { if (active) setOpening(false); }
     }

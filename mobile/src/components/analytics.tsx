@@ -16,7 +16,7 @@ export function SkillGapChart({ gaps }: { gaps: AnalysisOut['gaps'] }) {
         {item.value !== null && <View style={{ height: 5, width: `${Math.max(0, Math.min(100, item.value / 5 * 100))}%`, backgroundColor: item.color }} />}
       </View>
     </View>)}
-    {!!gap.rationale && <Details label="Details"><Text style={ui.body}>{gap.rationale}</Text></Details>}
+    {!!gap.rationale && <Details label="Why this gap matters"><Text style={ui.body}>{gap.rationale}</Text></Details>}
   </View>)}</View>;
 }
 

@@ -14,6 +14,7 @@ function load(relative) {
 
 const { createLatestRequestGate } = load('../src/utils/latest-request.ts');
 const { sessionRestoreAction } = load('../src/utils/session-restore.ts');
+const { canOpenJourneyStep, journeyStepState } = load('../src/utils/journey-stage.ts');
 
 test('overlapping Journey requests are last-request-wins, so an old failure cannot overwrite a newer success', () => {
   const gate = createLatestRequestGate();
@@ -36,4 +37,15 @@ test('session restoration clears only expired or invalid authenticated sessions'
   assert.equal(sessionRestoreAction(403), 'show_error');
   assert.equal(sessionRestoreAction(500), 'show_error');
   assert.equal(sessionRestoreAction(undefined), 'show_error');
+});
+
+test('Journey progression keeps completed steps revisitable without unlocking prerequisites early', () => {
+  assert.equal(canOpenJourneyStep('profile', false, false), false);
+  assert.equal(canOpenJourneyStep('analysis', true, false), false);
+  assert.equal(canOpenJourneyStep('analysis', true, true), true);
+  assert.equal(canOpenJourneyStep('roadmap', true, true), true);
+  assert.equal(journeyStepState('profile', 'analysis', true, true), 'complete');
+  assert.equal(journeyStepState('analysis', 'roadmap', true, true), 'complete');
+  assert.equal(journeyStepState('roadmap', 'roadmap', true, true), 'current');
+  assert.equal(journeyStepState('roadmap', 'profile', true, false), 'locked');
 });

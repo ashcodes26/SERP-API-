@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app import __version__
@@ -18,6 +18,8 @@ from app import models
 from app.auth import Principal, current_principal, allow_student, issue_token
 from app.services.analysis import analyze, get_job, get_profile
 from app.services.demo_seed import seed_demo
+from app.services.intelligence import normalize_skill
+from app.services.job_discovery import extract_requirements
 from app.services.serpapi import SearchFailure, search_resources
 from app.services.learning import create_roadmap, get_questions, submit_assessment, dashboard, latest_analysis
 from app.routes.accounts import router as accounts_router
@@ -136,11 +138,34 @@ def create_app() -> FastAPI:
 
     @app.post("/api/job/analyze", response_model=JobOut, tags=["career"])
     def job_analyze(request: JobAnalyzeIn, db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
-        if request.seeded_job_id is None:
-            raise HTTPException(status_code=422, detail={"code": "SEEDED_ROLE_REQUIRED", "message": "Free-text job extraction is not implemented in Phase 3"})
-        role = db.get(models.Job, request.seeded_job_id)
-        if role is None or not role.is_seeded:
-            raise HTTPException(status_code=404, detail={"code": "JOB_NOT_FOUND", "message": "Seeded role not found"})
+        if request.seeded_job_id is not None:
+            role = db.get(models.Job, request.seeded_job_id)
+            if role is None or not role.is_seeded:
+                raise HTTPException(status_code=404, detail={"code": "JOB_NOT_FOUND", "message": "Seeded role not found"})
+            return get_job(db, role)
+        title, description = (request.title or '').strip(), (request.description or '').strip()
+        if not title:
+            raise HTTPException(status_code=422, detail={"code": "ROLE_REQUIRED", "message": "Enter your desired role"})
+        role = db.scalar(select(models.Job).where(models.Job.is_seeded.is_(True), models.Job.title == title))
+        if role is not None:
+            return get_job(db, role)
+        if not description:
+            raise HTTPException(status_code=422, detail={"code": "ROLE_REQUIREMENTS_REQUIRED", "message": "Add role requirements so Skillup can analyze your desired role"})
+        requirements = extract_requirements(description)
+        if not requirements:
+            raise HTTPException(status_code=422, detail={"code": "ROLE_SKILLS_REQUIRED", "message": "Add at least one recognized skill in the role requirements"})
+        role = models.Job(title=title, description=description, is_seeded=False)
+        db.add(role); db.flush()
+        for requirement in requirements:
+            canonical, category = normalize_skill(requirement.name)
+            skill = db.scalar(select(models.Skill).where(models.Skill.canonical_name == canonical))
+            if skill is None:
+                skill = models.Skill(canonical_name=canonical, category=category, aliases=[])
+                db.add(skill); db.flush()
+            db.add(models.JobSkill(job_id=role.id, skill_id=skill.id, requirement_type=requirement.requirement_type,
+                                   importance=0.8 if requirement.requirement_type == 'required' else 0.5,
+                                   expected_level=requirement.expected_level))
+        db.commit()
         return get_job(db, role)
 
     @app.post("/api/skill-gap/analyze", response_model=AnalysisOut, tags=["career"])

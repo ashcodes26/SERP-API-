@@ -113,6 +113,8 @@ export interface AnalysisOut {
   id: number; student_id: number; job: JobOut; readiness: ReadinessOut;
   strengths: Competency[]; gaps: SkillGapOut[]; swot: SwotItemOut[]; warnings: string[]; created_at: string;
 }
+export interface RoadmapAiPhaseOut { title: string; actions: string[] }
+export interface RoadmapAiOut { status: 'available' | 'not_requested' | 'unavailable' | 'quota_limit' | 'timeout' | 'blocked' | 'invalid_output' | 'error'; message: string; model: string | null; summary: string | null; phases: RoadmapAiPhaseOut[] }
 
 export interface ResourceLink {
   title: string; url: string; snippet?: string | null; source_domain?: string | null;

@@ -5,8 +5,8 @@ import type { CandidateExtractionOut } from '@/types/contracts';
 
 export function CandidateEvidence({ profile }: { profile: CandidateExtractionOut }) {
   const [expanded, setExpanded] = useState(false);
-  return <Card><Text style={ui.heading}>Extracted profile</Text>
-    <Text style={ui.muted}>Saved text · proficiency unassessed</Text>
+  return <Card><Text style={ui.kicker}>SAVED PROFILE EVIDENCE</Text><Text style={ui.heading}>What the supplied profile text supports</Text>
+    <Text style={ui.muted}>Extracted from saved text · proficiency unassessed · review conflicts before using this information</Text>
     <Text style={ui.body}>Skills: {profile.skills.map(item => item.name).join(', ') || 'No supported skills detected'}</Text>
     {!!profile.conflicts.length && <Text style={ui.error}>Review conflicting sources: {profile.conflicts.join(', ')}</Text>}
     <Action secondary onPress={() => setExpanded(value => !value)}>{expanded ? 'Hide sources' : 'View sources'}</Action>

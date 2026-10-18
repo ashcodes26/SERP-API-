@@ -1,0 +1,39 @@
+# SkillUp Project Audit
+
+Audit date: 2026-10-18. Scope: repository inspection only. Application code, contracts, schemas, and dependencies were not changed.
+
+## Overall assessment
+
+SkillUp is a substantial prototype with real student and faculty workflows, ownership checks, a typed Expo/FastAPI boundary, and unusually strong service-level test coverage for its size. The core problem is product and interaction cohesion: student capabilities are spread across six top-level tabs, several legacy concepts remain in the API after their UI was removed, and a small set of screens own too much orchestration and styling.
+
+The backend is organized by domain and generally verifies student ownership or faculty scope. The frontend is functional but has multiple local async/error patterns, two visual systems, and little automated UI coverage. Gemini and SerpApi paths are intentionally bounded, but live-provider and browser acceptance still need repeatable verification.
+
+## Findings
+
+| Severity | Finding and evidence | Affected files | Recommendation / verification |
+|---|---|---|---|
+| P0 | Runtime reliability has recently been affected by stale frontend bundles and overlapping Journey requests. `HomeScreen` starts work from a focus effect while rendering its own retry/error state; a last-request guard was added locally, but no UI regression test protects it. | `mobile/src/app/index.tsx`, `mobile/src/app/_layout.tsx`, `mobile/src/api/client.ts` | Standardize cancellation/latest-request handling in a shared request hook. Verify with an offline-to-online Journey restoration test. |
+| P0 | Upload error behavior is not fully covered end-to-end. The backend has a documented `POST /api/journey/input/preview` 500 in local logs for unsupported parser input; route code now maps expected parse errors, but a browser upload was not executed in this audit. | `backend/app/routes/workspace.py`, `backend/app/services/journey_input.py`, `backend/app/services/resume_files.py`, `mobile/src/components/journey-input.tsx` | Add API tests for invalid MIME, corrupt PDF/DOCX, and browser FormData. Verify that all expected failures are 4xx with actionable UI messages. |
+| P1 | Student information architecture is fragmented: Journey, Job Search, Skill Demand, Resume, LinkedIn, and Placement are peers even though several are steps in one career-readiness workflow. | `mobile/src/components/app-navigation.tsx`, all files under `mobile/src/app/` | Adopt the proposed grouped navigation in `UX_RESTRUCTURE.md`; retain deep links. Validate task completion with student usability sessions. |
+| P1 | Legacy roadmap-task APIs and model remain after the To-do UI was removed. This is not necessarily unsafe, but it creates a disconnected API and duplicated roadmap concepts (`RoadmapItem` and `RoadmapTask`). | `backend/app/models.py`, `backend/app/routes/workspace.py`, `backend/app/routes/jobs.py`, `mobile/src/components/career-roadmap.tsx` | Decide explicitly whether task APIs are an internal/future capability or should be retired in a versioned cleanup. Do not remove until API-client and data migration review is complete. |
+| P1 | The AI roadmap endpoint is implemented but has no direct automated tests found in `backend/tests/`; `gemini_roadmap.py` catches broad exceptions and returns coarse status states. | `backend/app/routes/jobs.py`, `backend/app/services/gemini_roadmap.py`, `backend/tests/` | Add mocked provider tests for consent, unavailable configuration, valid plan, quota, timeout, malformed output, ownership, and no secret leakage. |
+| P1 | Design consistency is incomplete. `career-ui.tsx` uses one token/component set, while `login.tsx`, `admin-import.tsx`, and parts of the layout use local `StyleSheet` systems. | `mobile/src/components/career-ui.tsx`, `mobile/src/app/login.tsx`, `mobile/src/app/admin-import.tsx`, `mobile/src/app/_layout.tsx` | Establish a small shared screen/form/feedback component layer. Verify visual regression at phone, tablet, and desktop widths. |
+| P1 | Error/loading/success behavior is repeated locally and varies by page. Examples include `perform` functions in Jobs, Market, Placement, Admin, Resume, and LinkedIn. | `mobile/src/app/jobs.tsx`, `market.tsx`, `placement.tsx`, `admin.tsx`, `resume.tsx`, `linkedin.tsx` | Introduce shared async-state primitives and page-level empty/error components. Verify keyboard, retry, stale request, and accessibility semantics. |
+| P2 | Major files concentrate unrelated contracts and behavior: `backend/app/schemas.py` is 1,125 lines; `workspace.py` combines journey, resume, LinkedIn, tasks; `placement.py` combines administration, drives, reviews, training, and imports. | `backend/app/schemas.py`, `backend/app/routes/workspace.py`, `backend/app/routes/placement.py` | Split by bounded context without changing public paths. Add import/route smoke tests before each extraction. |
+| P2 | The client contract is manually mirrored from backend Pydantic schemas. This is workable but creates drift risk as endpoints expand. | `backend/app/schemas.py`, `mobile/src/types/contracts.ts` | Add contract consistency checks or generate an OpenAPI-derived client/types layer. Verify CI fails on incompatible schema changes. |
+| P2 | Authentication uses signed bearer tokens stored by platform helpers. The implementation has rate limiting, session version invalidation, and role checks, but no documented production cookie/refresh-token/HTTPS posture. | `backend/app/auth.py`, `mobile/src/utils/session-storage*`, `backend/app/config.py` | Document prototype boundary and create a production auth hardening decision record. Pen-test token expiry, logout, cross-user access, and device storage. |
+| P2 | SQLite startup upgrades and local process locks are suitable for a single-process prototype only. README already notes no distributed idempotency for Gemini. | `backend/app/db.py`, `backend/app/main.py`, `backend/app/routes/workspace.py`, README | Preserve prototype constraints; plan a migration/queue/idempotency design before multi-worker deployment. |
+| P3 | Unused or legacy presentation components may remain (`backend-status`, `app-tabs`, themed components) alongside the current `career-ui` design system. Usage should be confirmed before removal. | `mobile/src/components/backend-status.tsx`, `app-tabs*.tsx`, `themed-*.tsx` | Run a usage/dead-code review after navigation consolidation. Treat as an uncertain finding until the bundle analyzer confirms it. |
+
+## Security and privacy observations
+
+- Positives: API keys are server-side; Pydantic bounds inputs; document parsing is bounded; resume/Gemini consent is explicit; student/faculty authorization is centrally enforced in `auth.py`; sensitive API responses use `Cache-Control: no-store`; imports and placement actions are scope-checked.
+- Risks to address before production: bearer-token storage and 1-hour token model, broad prototype CORS configuration, SQLite/local process assumptions, no demonstrated security headers/observability/secret rotation plan, and browser acceptance not captured as repeatable tests.
+- Gemini: `gemini_resume.py` and `gemini_roadmap.py` send only consented data, but live data handling remains dependent on the configured Google account and terms. No live privacy assertion can be proven from static inspection.
+
+## Quality checks observed
+
+- `mobile`: TypeScript and Expo lint completed successfully during this audit.
+- `mobile`: `npm test` is not defined, despite `mobile/tests/*.test.cjs` being present; the test command is therefore an actionable configuration gap.
+- `backend`: pytest was invoked and progressed cleanly through 41%, but this audit session did not capture a final process result. Do not claim the suite passed without rerunning it in CI or an isolated terminal.
+- Browser and live Gemini/SerpApi acceptance were not executed; their status is **unverified**, not failed.

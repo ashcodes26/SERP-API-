@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { linkedinApi, session, tasksApi } from '@/api/client';
 import { LinkedInInsights } from '@/components/linkedin-insights';
 import { CandidateEvidence } from '@/components/candidate-evidence';
+import { CareerAssetHeader } from '@/components/career-asset-header';
 import { Action, Card, ui } from '@/components/career-ui';
 import { Check, Confirm, Field, pickResume } from '@/components/workspace-controls';
 import { releasePickedResume } from '@/utils/picked-resume';
@@ -76,19 +77,20 @@ export default function LinkedInScreen() {
   }
   const open = (url: string) => void perform(async () => { if (!/^https:\/\//i.test(url)) throw new Error('This source URL is unavailable.'); await Linking.openURL(url); });
   return <SafeAreaView edges={['bottom']} style={ui.screen}><ScrollView contentContainerStyle={[ui.content, { maxWidth: 1200 }]} keyboardShouldPersistTaps="handled">
-    <Text style={ui.kicker}>PROFILE</Text><Text style={ui.title}>LinkedIn</Text>
+    <CareerAssetHeader asset="linkedin" description="Improve your professional profile presentation, discoverability, and role positioning using profile content you review." steps={['Add profile evidence', 'Choose target', 'Review insights', 'Apply on LinkedIn']} currentStep={profile?.profile_text ? targetedAnalysis ? 2 : 1 : 0} />
 
     {!student ? <Card><Text style={ui.body}>Sign in with a student account to use your private LinkedIn analyzer.</Text></Card> : <>
       {busy && <View style={ui.row}><ActivityIndicator color={d.accent} /><Text style={ui.body}>Processing your request...</Text></View>}
-      {!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text></Card>}
+      {!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Text style={ui.muted}>Saved profile content remains unchanged. Check the provider message, then try again or use pasted/profile-export text.</Text></Card>}
       {!!notice && <Card><Text accessibilityLiveRegion="polite" style={ui.body}>{notice}</Text></Card>}
       {!!profile?.profile_text && <CandidateEvidence profile={profile.extracted_profile} />}
-      <Card><Text style={ui.kicker}>YOUR PROFILE / CAREER EVIDENCE</Text><Text style={ui.heading}>Your profile</Text><Text style={ui.body}>{profile?.message ?? 'Supply your profile summary or PDF/DOCX/TXT export.'}</Text>
+      <Card><Text style={ui.kicker}>STEP 1 / PROFILE EVIDENCE</Text><Text style={ui.heading}>Add profile content you can verify</Text><Text style={ui.body}>{profile?.message ?? 'Paste your profile text, upload your own profile export, or optionally search a public URL.'}</Text>
         <Field label="LinkedIn profile URL (optional)" value={profileUrl} onChange={setProfileUrl} maxLength={500} disabled={busy} placeholder="https://www.linkedin.com/in/your-name/" />
+        <Text style={ui.muted}>A public URL search checks indexed public information only. It may be unavailable or incomplete and is not a guaranteed LinkedIn profile lookup.</Text>
         <Check label="I consent to searching this public profile URL and storing its preview." checked={lookupConsent} onChange={setLookupConsent} disabled={busy} />
         <Action disabled={busy || !lookupConsent || !profileUrl.trim()} onPress={() => void perform(async () => { setPublicPreview(await linkedinApi.publicSearch(profileUrl.trim(), lookupConsent)); })}>Retrieve public profile information</Action>
         {publicPreview && <View style={ui.divider}>
-          <Text style={ui.heading}>{publicPreview.status === 'found' ? 'Public profile results' : 'No indexed profile information found'}</Text>
+          <Text style={ui.heading}>{publicPreview.status === 'found' ? 'Public search preview' : 'No indexed profile information found'}</Text>
           <Text style={ui.muted}>Source: SerpApi / Google public search / {publicPreview.provenance.replaceAll('_', ' ')} / {publicPreview.cache_status} / Retrieved {new Date(publicPreview.retrieved_at).toLocaleString()}</Text>
           <Text selectable style={ui.body}>{publicPreview.profile_url}</Text>
           <Text style={ui.body}>Skills mentioned: {publicPreview.detected_skills.join(', ') || 'Not available in the retrieved text'}</Text>
@@ -99,7 +101,8 @@ export default function LinkedInScreen() {
             else void perform(() => adoptPublicPreview(publicPreview));
           }}>Use retrieved text in profile editor</Action>}
         </View>}
-        <Field label="Your profile information (editable)" value={profileText} onChange={setProfileText} multiline disabled={busy} placeholder="Skills, experience, projects, education, certifications, and actual outcomes. Use clear section headings." />
+        <Field label="Profile content to analyze (editable)" value={profileText} onChange={setProfileText} multiline disabled={busy} placeholder="Headline, About, experience, projects, skills, education, certifications, and actual outcomes. Use clear section headings." />
+        <Text style={ui.muted}>Only saved text is analyzed. Retrieved excerpts and AI wording suggestions are drafts—correct them before saving or publishing.</Text>
         <Check label="I consent to connecting my LinkedIn account and analyzing my supplied profile data." checked={consent} onChange={setConsent} disabled={busy} /><Check label="I reviewed this information and confirm it describes my own background." checked={confirmed} onChange={setConfirmed} disabled={busy} />
         <View style={ui.row}><Action secondary disabled={busy || !consent || (!!lookupDraftId && !confirmed) || (!profileUrl.trim() && profileText.trim().length < 30)} onPress={() => void perform(async () => { setImported(await linkedinApi.save(profileBody())); setNotice(profileText.trim() ? 'Your reviewed profile is saved. Reanalyze the resume to review updated source evidence.' : 'Profile URL saved. Click Retrieve public profile information to search for indexed career details.'); })}>Save profile</Action><Action secondary disabled={busy || !consent} onPress={() => void perform(async () => { const asset = await pickResume(); if (!asset) return; try { setImported(await linkedinApi.upload(asset, profileBody())); setNotice('Your own profile export was parsed and saved. Reanalyze to review its evidence.'); } finally { releasePickedResume(asset); } })}>Upload profile</Action></View>
 
@@ -115,11 +118,11 @@ export default function LinkedInScreen() {
         {(profile?.consent_at || publicPreview) && <>{profile?.consent_at && <Text style={ui.muted}>Saved {new Date(profile.updated_at!).toLocaleString()} / {profile.import_method?.replaceAll('_', ' ') ?? 'URL only; no import'} / {profile.confirmed ? 'Student confirmed, not externally verified' : 'Self-reported; confirmation needed'}</Text>}<Action secondary disabled={busy} onPress={() => setConfirmation({ title: 'Remove profile data', message: 'Delete your LinkedIn URL, supplied text and public preview, and invalidate source-derived resume analyses? Previously approved resume text is preserved; delete a resume to remove that copy.', action: async () => { const result = await linkedinApi.remove(); setImported(await linkedinApi.get()); setPublicPreview(null); setAuthorization(null); setConnection(null); setNotice(result.message); } })}>Remove LinkedIn data</Action></>}
       </Card>
       <Card>
-        <Text style={ui.kicker}>TARGET</Text><Text style={ui.heading}>Target role</Text>
+        <Text style={ui.kicker}>STEP 2 / POSITIONING</Text><Text style={ui.heading}>Compare your profile to a target role</Text><Text style={ui.muted}>This identifies terms and evidence in your saved profile text. It does not verify employment, skills, or profile completeness.</Text>
 
         <View style={ui.row}>{TARGET_ROLES.map(role => <Action secondary disabled={busy} key={role} onPress={() => { setTargetRole(role); setTargetedAnalysis(null); }}>{role}{targetRole === role ? ' (selected)' : ''}</Action>)}</View>
         <Field label="Job description (optional)" value={jobDescription} onChange={value => { setJobDescription(value); setTargetedAnalysis(null);  }} multiline disabled={busy} placeholder="Paste job description" />
-        <Action disabled={busy || !profile?.profile_text || (!!jobDescription.trim() && jobDescription.trim().length < 30)} onPress={() => void perform(async () => { setTargetedAnalysis(await linkedinApi.analyze(targetRole, jobDescription)); setNotice('Career analysis updated using your saved profile text and selected target.'); })}>Analyze profile</Action>
+        <Action disabled={busy || !profile?.profile_text || (!!jobDescription.trim() && jobDescription.trim().length < 30)} onPress={() => void perform(async () => { setTargetedAnalysis(await linkedinApi.analyze(targetRole, jobDescription)); setNotice('Profile positioning analysis updated using your saved profile text and selected target.'); })}>Analyze profile positioning</Action>
         <Text style={ui.muted}>{profileText !== profile?.profile_text ? 'Your editor has unsaved changes. Save your profile input above to include them in analysis.' : 'Analysis uses your saved career text.'}</Text>
         {!profile?.profile_text && <Text style={ui.body}>Save profile text to analyze.</Text>}
       </Card>

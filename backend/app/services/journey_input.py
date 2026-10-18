@@ -1,15 +1,14 @@
-"""Single-owner spreadsheet input: preview first, unknown skill levels remain unknown."""
+"""Single-owner PDF/DOCX input: preview first, unknown skill levels remain unknown."""
 import hashlib
 import re
-import zipfile
-from io import BytesIO
 
 from pydantic import ValidationError
 from sqlalchemy import select
 from app import models, schemas
 from app.services.analysis import get_profile
-from app.services.imports import parse_upload, detect_mapping
 from app.services.intelligence import normalize_skill
+from app.services.resume_enhancer import claims
+from app.services.resume_files import DOCX_MIME, parse_resume
 
 DETAIL_FIELDS = {'name', 'department', 'program', 'specialization', 'semester', 'cgpa', 'graduation_year'}
 
@@ -18,39 +17,29 @@ def digest(db, student):
     return hashlib.sha256(get_profile(db, student).model_dump_json().encode()).hexdigest()
 
 
-def parse(filename, content):
-    if filename.lower().endswith('.xlsx'):
-        try:
-            with zipfile.ZipFile(BytesIO(content)) as archive:
-                if len(archive.infolist()) > 200 or sum(item.file_size for item in archive.infolist()) > 20 * 1024 * 1024:
-                    raise ValueError('Excel workbook is too large when expanded')
-        except zipfile.BadZipFile:
-            raise ValueError('Cannot parse file as XLSX') from None
-    headers, rows = parse_upload(filename, content)
-    if len(rows) != 1:
-        raise ValueError('Use exactly one student row; Excel reads the first worksheet')
-    mapping = {header: detect_mapping([header]).get(header) for header in headers}
-    data, ignored, used = {}, [], set()
-    for header in headers:
-        key = re.sub(r'[\s_-]+', ' ', header.strip().lower())
-        target = {'skill': 'skills', 'skills': 'skills', 'summary': 'summary', 'profile summary': 'summary'}.get(key, mapping.get(header))
-        if target not in DETAIL_FIELDS | {'skills', 'summary'}:
-            ignored.append(header)
-            continue
-        if target in used:
-            raise ValueError('Multiple columns map to the same profile field')
-        used.add(target)
-        value = rows[0][header]
-        if value:
-            data[target] = [s.strip() for s in re.split(r'[,;|]', value) if s.strip()] if target == 'skills' else value
+def parse(filename, content, content_type=None):
+    suffix = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
+    if suffix not in {'pdf', 'docx'}:
+        raise ValueError('Choose a PDF or DOCX file')
+    # Browsers and native pickers can assign a generic or legacy MIME label to a
+    # correctly named file. The parser still validates the PDF signature or DOCX
+    # archive/XML, so use the validated extension to select the expected format.
+    text = parse_resume(content, filename, 'application/pdf' if suffix == 'pdf' else DOCX_MIME)
+    data = {'skills': list(claims(text, 'journey_document', True)), 'summary': text[:2000]}
+    first = next((line.strip() for line in text.splitlines() if line.strip()), '')
+    named = re.fullmatch(r'(?:full name|name):\s*([^\d\n]{2,100})', first, re.I)
+    if named:
+        data['name'] = named.group(1).strip()
+    elif re.fullmatch(r'[^\W\d_]+(?:[ .\u2019\'-]+[^\W\d_]+){1,4}', first, re.UNICODE):
+        data['name'] = first
     if not data:
-        raise ValueError('No profile details found; use the provided template columns')
+        raise ValueError('No profile details found in this document')
     try:
         result = schemas.JourneyDetails.model_validate(data)
     except ValidationError as exc:
         first = exc.errors()[0]
         raise ValueError(f"{first['loc'][0]}: {first['msg']}") from None
-    return result, ignored
+    return result, []
 
 
 def save(db, student, details):
@@ -61,7 +50,7 @@ def save(db, student, details):
     if details.skills or details.summary:
         normalized = list(dict.fromkeys(normalize_skill(name)[0] for name in details.skills))
         summary = ('Skills: ' + ', '.join(normalized) + '\n' if normalized else '') + details.summary
-        ref = 'journey-spreadsheet:' + hashlib.sha256(summary.encode()).hexdigest()
+        ref = 'journey-document:' + hashlib.sha256(summary.encode()).hexdigest()
         evidence = db.scalar(select(models.Evidence).where(models.Evidence.student_pk == student.id, models.Evidence.source_ref == ref))
         if evidence is None:
             evidence = models.Evidence(student_pk=student.id, source_type='self_report', source_ref=ref, extracted_summary=summary, extraction_confidence=None)

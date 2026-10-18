@@ -26,6 +26,7 @@ export default function RootLayout() {
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [logoutError, setLogoutError] = useState('');
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const routingPending = useRef(true);
   useEffect(() => { void SplashScreen.hideAsync(); }, []);
   useEffect(() => {
@@ -87,9 +88,9 @@ export default function RootLayout() {
     <AuthContext.Provider value={{ account, opening, error, retry: () => setAttempt(x => x+1), accept, logout }}>
       <StatusBar style="light" />
       <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: d.canvas }}>
-        {account && <><View style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, backgroundColor: d.surface }}>
-          <Text style={{ color: d.text, fontSize: 22 }}>skillup</Text><Text style={{ color: d.muted }}>{account.username} / {account.role.toUpperCase()}</Text>
-          <Pressable accessibilityRole="button" onPress={() => void logout()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: d.body }}>Sign out</Text></Pressable>
+        {account && <><View style={{ position: 'relative', padding: 16, flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, backgroundColor: d.surface }}>
+          <Text style={{ color: d.text, fontSize: 22 }}>skillup</Text><Pressable accessibilityRole="button" accessibilityLabel="Profile and settings menu" accessibilityState={{ expanded: accountMenuOpen }} onPress={() => setAccountMenuOpen(value => !value)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: d.muted }}>{account.username} / {account.role.toUpperCase()} ▾</Text></Pressable>
+          {accountMenuOpen && <View accessibilityLabel="Profile and settings" style={{ position: 'absolute', zIndex: 20, top: 64, right: 16, width: 280, gap: 8, padding: 16, borderWidth: 1, borderColor: d.border, borderRadius: 8, backgroundColor: d.elevated }}><Text style={{ color: d.muted }}>Profile details are managed in My Career Plan.</Text><Pressable accessibilityRole="button" onPress={() => void logout()} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: d.body }}>Sign out</Text></Pressable><Pressable accessibilityRole="button" onPress={() => setAccountMenuOpen(false)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: d.body }}>Close menu</Text></Pressable></View>}
         </View><AppNavigation role={account.role} /></>}
         {!!logoutError && <Text accessibilityRole="alert" style={{ color: d.error }}>{logoutError}</Text>}
         {opening ? <View style={{ padding: 32 }}><ActivityIndicator color={d.accent} /></View> : error ? <View style={{ padding: 32, gap: 16 }}><Text accessibilityRole="alert" style={{ color: d.error }}>{error}</Text><Pressable accessibilityRole="button" onPress={() => setAttempt(x => x+1)}><Text style={{ color: d.body }}>Retry session restoration</Text></Pressable></View> : <Stack screenOptions={{ headerShown: false }}>

@@ -8,13 +8,14 @@ from app.config import get_settings
 from app.db import get_db
 from app.schemas import (JobListingOut, JobMatchIn, JobMatchOut, JobSearchIn, JobSearchOut,
                          MarketSkillsOut, RoadmapItemOut,
-                         RoadmapProgressIn)
+                         RoadmapProgressIn, RoadmapAiIn, RoadmapAiOut)
 from app.schemas import MarketFilter, MarketDemandOut, MarketCompareOut, MarketMeOut, MarketScopeOut
 from app.services import market as insights
 from app.services.resume_files import parse_resume, MAX_RESUME_BYTES
 from starlette.concurrency import run_in_threadpool
 from app.services import job_discovery as service
 from app.services.learning import create_roadmap
+from app.services.gemini_roadmap import generate as generate_ai_roadmap
 from app.services.serpapi import SearchFailure
 
 router = APIRouter(prefix='/api', tags=['job discovery'])
@@ -108,6 +109,23 @@ async def selected_roadmap(student_id: int, analysis_id: int, db: Session = Depe
     if analysis is None or analysis.student_pk != selected.id:
         raise HTTPException(404, detail={'code': 'ANALYSIS_NOT_FOUND', 'message': 'Student analysis not found'})
     return await create_roadmap(db, selected, analysis, get_settings())
+
+
+@router.post('/roadmap/{student_id}/analysis/{analysis_id}/ai', response_model=RoadmapAiOut)
+def ai_roadmap(student_id: int, analysis_id: int, request: RoadmapAiIn, db: Session = Depends(get_db), principal: Principal = Depends(current_principal)):
+    selected = student(db, principal, student_id)
+    analysis = db.get(models.Analysis, analysis_id)
+    if analysis is None or analysis.student_pk != selected.id:
+        raise HTTPException(404, detail={'code': 'ANALYSIS_NOT_FOUND', 'message': 'Student analysis not found'})
+    from types import SimpleNamespace
+    from app.services.analysis import get_job, get_profile
+    from app.services.intelligence import score_role
+    job = db.get(models.Job, analysis.job_id)
+    if job is None:
+        raise HTTPException(404, detail={'code': 'JOB_NOT_FOUND', 'message': 'Analyzed role not found'})
+    scored = score_role(get_job(db, job), get_profile(db, selected).competencies)
+    report = SimpleNamespace(job=get_job(db, job), gaps=scored.gaps)
+    return generate_ai_roadmap(report, request.description, request.consent, get_settings())
 
 
 @router.patch('/roadmap/items/{item_id}', response_model=RoadmapItemOut)

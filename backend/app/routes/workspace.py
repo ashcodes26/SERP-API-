@@ -43,11 +43,13 @@ async def journey_preview(file: UploadFile = File(...), db: Session = Depends(ge
     content = await file.read(1024 * 1024 + 1)
     await file.close()
     if len(content) > 1024 * 1024:
-        error(413, 'FILE_TOO_LARGE', 'Choose a CSV/XLSX file up to 1 MiB')
+        error(413, 'FILE_TOO_LARGE', 'Choose a PDF or DOCX file up to 1 MiB')
     try:
-        details, ignored = journey_input.parse(file.filename or '', content)
+        details, ignored = journey_input.parse(file.filename or '', content, file.content_type)
+    except SearchFailure as exc:
+        error(exc.status, exc.code, exc.message)
     except ValueError as exc:
-        error(422, 'INVALID_SPREADSHEET', str(exc))
+        error(422, 'INVALID_DOCUMENT', str(exc))
     return s.JourneyPreviewOut(details=details, ignored_columns=ignored, profile_digest=journey_input.digest(db, student))
 
 

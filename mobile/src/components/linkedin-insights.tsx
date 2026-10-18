@@ -9,27 +9,28 @@ export function LinkedInInsights({ analysis, busy, addTask }: { analysis: Linked
   return <>
     <Card>
       <Text style={ui.kicker}>CAREER INTELLIGENCE / {analysis.engine.toUpperCase()}</Text>
-      <Text style={ui.heading}>Profile quality</Text><ScoreRing value={analysis.profile_quality_score} label="Text quality" />
+      <Text style={ui.kicker}>STEP 3 / PROFILE INSIGHTS</Text><Text style={ui.heading}>Profile completeness and positioning</Text><ScoreRing value={analysis.profile_quality_score} label="Text quality" />
       <Text style={ui.muted}>Analyzed source: {analysis.source.replaceAll('_', ' ')} / {analysis.data_scope.replaceAll('_', ' ')} / {analysis.confirmed ? 'Reviewed by you' : 'Self-reported'}</Text>
+      <Text style={ui.muted}>This score describes the supplied profile text against the shown rubric. It is not a LinkedIn profile score, recruiter rating, or guarantee of visibility.</Text>
       <View style={ui.row}>
         <Metric label="Skills with context" value={`${supported}/${analysis.skills.length}`} />
         <Metric label="Contribution statements" value={String(analysis.action_statement_count)} />
         <Metric label="Measurable impact" value={String(analysis.quantified_statement_count)} />
       </View>
-      <Details label="Score details"><Text style={ui.body}>{analysis.summary}</Text><Text style={ui.muted}>{analysis.quality_rubric}</Text></Details>
+      <Details label="How to read this feedback"><Text style={ui.body}>{analysis.summary}</Text><Text style={ui.muted}>{analysis.quality_rubric}</Text></Details>
       <Text style={ui.body}>Sections detected: {analysis.present_sections.join(', ') || 'No labeled core sections'}</Text>
       <Text style={ui.muted}>Not detected in supplied text: {analysis.missing_sections.join(', ') || 'None'}</Text>
     </Card>
     {analysis.target && <Card><Text style={ui.kicker}>YOUR TARGET / EVIDENCE GAP ANALYSIS</Text><RoleMatch result={analysis.target} /></Card>}
     <Card>
-      <Text style={ui.heading}>Improvements</Text>
+      <Text style={ui.kicker}>EVIDENCE-BACKED RECOMMENDATIONS</Text><Text style={ui.heading}>Prioritized profile improvements</Text>
       {analysis.improvements.length ? analysis.improvements.map((item, index) => <ImprovementRow key={`${item.title}-${index}`} index={index} title={item.title} status={item.priority.toUpperCase()} summary={item.action}
         actions={<Action secondary disabled={busy} onPress={() => addTask(item.title, `${item.reason}\n${item.action}`, item.priority)}>Add task</Action>}>
         <Text style={ui.body}>{item.action}</Text><Text style={ui.muted}>{item.reason}</Text>{item.excerpt && <Text selectable style={ui.muted}>{item.excerpt}</Text>}
       </ImprovementRow>) : <Text style={ui.muted}>No further changes.</Text>}
     </Card>
     <Card>
-      <Text style={ui.heading}>Skill evidence</Text>
+      <Text style={ui.heading}>Skills and supporting evidence</Text><Text style={ui.muted}>Evidence reflects wording found in supplied text. It does not assess proficiency.</Text>
       {!!analysis.skills.length && <BarChart max={analysis.skills.length} unit=" skills" rows={[
         { label: 'Mentions', value: analysis.skills.filter(s => s.evidence_strength === 'mention_only').length },
         { label: 'Project context', value: analysis.skills.filter(s => s.evidence_strength === 'project_context').length },
@@ -43,14 +44,14 @@ export function LinkedInInsights({ analysis, busy, addTask }: { analysis: Linked
       </View>) : <Text style={ui.body}>No supported skills detected.</Text>}
     </Card>
     {!!analysis.role_matches.length && <Card>
-      <Text style={ui.heading}>Career directions</Text>
+      <Text style={ui.heading}>Role positioning ideas</Text>
       <Text style={ui.muted}>Curated role templates</Text>
       {analysis.role_matches.slice(0, 3).map(role => <View style={ui.divider} key={role.title}><RoleMatch result={role} /></View>)}
     </Card>}
     {(analysis.headline_suggestion || analysis.wording_suggestions.length > 0) && <Card>
-      <Text style={ui.heading}>Wording ideas</Text>
-      {!!analysis.headline_suggestion && <><Text style={ui.label}>Skill-focused headline starting point</Text><Text selectable style={ui.body}>{analysis.headline_suggestion}</Text><Text style={ui.muted}>Review before using.</Text></>}
-      {analysis.wording_suggestions.map((item, index) => <View style={ui.divider} key={index}><Text selectable style={ui.muted}>Original: {item.original}</Text><Text selectable style={ui.body}>Suggested: {item.suggested}</Text><Text style={ui.muted}>{item.reason}</Text></View>)}
+      <Text style={ui.heading}>Suggested wording to review</Text><Text style={ui.muted}>These are suggestions, not verified profile content. Keep only wording you can support.</Text>
+      {!!analysis.headline_suggestion && <><Text style={ui.label}>SKILL-FOCUSED HEADLINE STARTING POINT</Text><Text selectable style={ui.body}>{analysis.headline_suggestion}</Text><Text style={ui.muted}>Review and adapt before using.</Text></>}
+      {analysis.wording_suggestions.map((item, index) => <View style={ui.divider} key={index}><Text style={ui.label}>CURRENT WORDING</Text><Text selectable style={ui.muted}>{item.original}</Text><Text style={ui.label}>SUGGESTED WORDING</Text><Text selectable style={ui.body}>{item.suggested}</Text><Text style={ui.muted}>{item.reason}</Text></View>)}
     </Card>}
     <Details label="Analysis details">{analysis.limitations.map(value => <Text key={value} style={ui.muted}>{value}</Text>)}</Details>
   </>;

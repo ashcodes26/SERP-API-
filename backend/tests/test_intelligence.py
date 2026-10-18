@@ -79,6 +79,13 @@ def test_demo_seed_and_endpoints_use_real_database(tmp_path):
             assert profile.json()['evidence']
             job = client.post('/api/job/analyze', json={'seeded_job_id': ids['job_id']})
             assert job.status_code == 200 and len(job.json()['skills']) == 5
+            custom = client.post('/api/job/analyze', json={
+                'title': 'Data Engineer',
+                'description': 'Required skills: Python, SQL and Docker. Preferred: AWS.',
+            })
+            assert custom.status_code == 200
+            assert custom.json()['title'] == 'Data Engineer'
+            assert {item['skill']['canonical_name'] for item in custom.json()['skills']} >= {'Python', 'SQL', 'Docker'}
             payload = {'student_id': ids['student_id'], 'job_id': ids['job_id']}
             result1 = client.post('/api/skill-gap/analyze', json=payload)
             result2 = client.post('/api/skill-gap/analyze', json=payload)
@@ -90,6 +97,7 @@ def test_demo_seed_and_endpoints_use_real_database(tmp_path):
             assert any(g['gap'] is None for g in a['gaps'])
             assert client.get('/api/profile/99999').status_code == 404
             assert client.post('/api/job/analyze', json={'description': 'hello'}).status_code == 422
+            assert client.post('/api/job/analyze', json={'title': 'Data Engineer'}).status_code == 422
             assert client.post('/api/skill-gap/analyze', json={'student_id': 99999, 'job_id': ids['job_id']}).status_code == 404
     finally:
         app.dependency_overrides.clear()

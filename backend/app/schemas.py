@@ -256,6 +256,24 @@ class RoadmapItemOut(ORM):
     completion_evidence: str | None = None
 
 
+class RoadmapAiIn(BaseModel):
+    description: str = Field(min_length=30, max_length=4000)
+    consent: bool
+
+
+class RoadmapAiPhaseOut(BaseModel):
+    title: str = Field(min_length=1, max_length=160)
+    actions: list[str] = Field(min_length=1, max_length=8)
+
+
+class RoadmapAiOut(BaseModel):
+    status: Literal['available', 'not_requested', 'unavailable', 'quota_limit', 'timeout', 'blocked', 'invalid_output', 'error']
+    message: str
+    model: str | None = None
+    summary: str | None = None
+    phases: list[RoadmapAiPhaseOut] = Field(default_factory=list, max_length=6)
+
+
 # ---- Assessment & dashboard ---------------------------------------------
 class AssessmentSubmitIn(BaseModel):
     student_id: int

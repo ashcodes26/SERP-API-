@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Text, TextInput, View, Pressable, Linking } from 'react-native';
 import { Action, Card, Details, ui } from './career-ui';
 import { placementApi } from '@/api/placement';
+import { displayPlacementStatus } from '@/utils/placement-status';
 import type { ApplicationOut, ApplicationStage, DriveIn, DriveOut, FacultyReviewOut, TrainingOut } from '@/types/contracts';
 
 export function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
@@ -26,7 +27,7 @@ export function ReviewCard({ review, admin = false, onUpdated }: { review: Facul
     catch (err) { setError(err instanceof Error ? err.message : 'Could not revoke sharing'); }
     finally { setBusy(false); }
   }
-  return <Card><Text style={ui.heading}>Revision {review.version} · {review.status.replace('_', ' ')}</Text><Text style={ui.muted}>Resume {review.workspace_id} · {new Date(review.created_at).toLocaleString()} · {review.shared ? 'Shared' : 'Sharing revoked'}</Text>
+  return <Card><Text style={ui.heading}>Resume revision {review.version}</Text><Text style={review.status === 'approved' ? { ...ui.body, color: '#55C98B' } : review.status === 'changes_requested' ? ui.error : ui.body}>{displayPlacementStatus(review.status)}</Text><Text style={ui.muted}>Resume {review.workspace_id} · submitted {new Date(review.created_at).toLocaleString()} · {review.shared ? 'Shared with faculty' : 'Sharing revoked'}</Text>
     <Text style={ui.muted}>{review.disclaimer}</Text><Details label="Read shared revision"><Text selectable style={ui.body}>{review.text}</Text></Details>
     {review.suggestions && <Details label="Student-shared stored Gemini feedback"><Text style={ui.body}>{review.suggestions.ai_review?.feedback?.summary}</Text>{review.suggestions.suggestions.map(x => <Text key={x.id} style={ui.body}>{x.original} → {x.proposed}</Text>)}<Text style={ui.muted}>Stored suggestions, subject to student review. No AI request is made here.</Text></Details>}
     {review.feedback.map(x => <View key={x.id}><Text style={ui.muted}>{x.status.replace('_', ' ')} · {new Date(x.created_at).toLocaleString()}</Text><Text selectable style={ui.body}>{x.feedback}</Text></View>)}
@@ -49,7 +50,7 @@ export function ApplicationCard({ item, admin = false, onUpdated }: { item: Appl
     catch (err) { setError(err instanceof Error ? err.message : 'Update failed'); }
     finally { setBusy(false); }
   }
-  return <Card><Text style={ui.heading}>Application {item.id} · {item.stage}</Text><Text style={ui.muted}>Drive {item.drive_id} · Explicitly reported outcome</Text>
+  return <Card><Text style={ui.heading}>Application for drive {item.drive_id}</Text><Text style={ui.body}>Current status: {displayPlacementStatus(item.stage)}</Text><Text style={ui.muted}>This is your recorded application status, not an employer-verified outcome unless updated by you or faculty.</Text>
     <Details label="Application history">{item.history.map((x, i) => <Text style={ui.body} key={i}>{x.stage} · {new Date(x.created_at).toLocaleString()}{'\n'}{x.note}</Text>)}</Details>
     {item.eligibility_override !== null && <Text style={ui.body}>Faculty eligibility review: {item.eligibility_override ? 'eligible' : 'not eligible'} · {item.review_reason}</Text>}
     <Choices label={`Stage for application ${item.id}`} values={(['applied', 'shortlisted', 'interview', 'offered', 'rejected', 'withdrawn'] as const).map(value => ({ value, label: value }))} selected={stage} onSelect={setStage} />
@@ -99,7 +100,7 @@ export function TrainingCard({ item, student = false, onUpdated, onAssessment }:
     finally { setBusy(false); }
   }
   async function open() { try { if (item.resource_url) await Linking.openURL(item.resource_url); } catch { setError('Could not open the resource URL'); } }
-  return <Card><Text style={ui.heading}>{item.title}</Text><Text style={ui.muted}>{item.kind} · {item.status.replace('_', ' ')} · Due {item.deadline}</Text><Text style={ui.body}>{item.instructions}</Text>
+  return <Card><Text style={ui.heading}>{item.title}</Text><Text style={ui.body}>Status: {displayPlacementStatus(item.status)}</Text><Text style={ui.muted}>{item.kind} · Due {item.deadline}</Text><Text style={ui.body}>{item.instructions}</Text>
     {item.resource_url && <Action secondary onPress={() => void open()}>Open learning resource</Action>}
     {student && item.kind === 'assessment' && item.skill_id && onAssessment && <Action secondary onPress={() => onAssessment(item.skill_id!)}>Take assigned assessment</Action>}
     {student ? <><Field label={`Evidence for assignment ${item.id}`} value={evidence} onChange={setEvidence} multiline/><View style={ui.row}><Action secondary disabled={busy} onPress={() => void save('in_progress')}>Mark in progress</Action><Action disabled={busy || !evidence.trim()} onPress={() => void save('completed')}>Submit completion evidence</Action></View></> : <Text selectable style={ui.body}>{item.evidence || 'No completion evidence submitted'}</Text>}

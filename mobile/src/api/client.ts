@@ -131,6 +131,7 @@ export const jobsApi = {
   match: (id: number, student_id: number) => jsonPost<JobMatchOut>(`/api/jobs/${id}/match`, { student_id }),
   market: (search_id: string) => request<MarketSkillsOut>(`/api/market/skills?search_id=${search_id}`),
   roadmap: (student_id: number, analysis_id: number) => request<RoadmapItemOut[]>(`/api/roadmap/${student_id}/analysis/${analysis_id}`, {}, 120000),
+  aiRoadmap: (student_id: number, analysis_id: number, description: string, consent: boolean) => jsonPost<import('@/types/contracts').RoadmapAiOut>(`/api/roadmap/${student_id}/analysis/${analysis_id}/ai`, { description, consent }),
   progress: (item_id: number, status: RoadmapStatus, completion_evidence?: string) => request<RoadmapItemOut>(`/api/roadmap/items/${item_id}`, { method: 'PATCH', body: JSON.stringify({ status, completion_evidence }) }),
 };
 
@@ -155,6 +156,7 @@ export const careerApi = {
   seed: () => jsonPost<{ student_id: number; job_id: number; synthetic: boolean }>('/api/demo/seed', {}),
   profile: (id: number) => request<ProfileOut>(`/api/profile/${id}`),
   role: (id: number) => jsonPost<JobOut>('/api/job/analyze', { seeded_job_id: id }),
+  customRole: (title: string, description: string) => jsonPost<JobOut>('/api/job/analyze', { title, description }),
   analyze: (student_id: number, job_id: number) => jsonPost<AnalysisOut>('/api/skill-gap/analyze', { student_id, job_id }),
   roadmap: (id: number) => request<RoadmapItemOut[]>(`/api/roadmap/${id}`, {}, 30000),
   questions: (id: number) => request<QuestionSet>(`/api/assessment/questions/${id}`),

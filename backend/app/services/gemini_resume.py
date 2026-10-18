@@ -214,17 +214,9 @@ def generate(resume, description, cfg):
 
 
 def request_structured(data, cfg, schema, system, timeout, max_tokens):
-    from google import genai
-    from google.genai import types
-    # attempts=1 includes the initial request. No automatic retries / tools / files.
-    with genai.Client(api_key=cfg.gemini_api_key.get_secret_value(), enterprise=False,
-                     http_options=types.HttpOptions(timeout=int(timeout * 1000),
-                         retry_options=types.HttpRetryOptions(attempts=1))) as client:
-        return client.models.generate_content(model=cfg.gemini_model,
-            contents=json.dumps(data),
-            config=types.GenerateContentConfig(system_instruction=system,
-                response_mime_type='application/json', response_json_schema=schema,
-                temperature=0.1, max_output_tokens=max_tokens))
+    from app.services.ai_gateway import generate_structured
+    task_id = 'resume_rewrite_verify_v1' if max_tokens <= 2000 else 'resume_review_v1'
+    return generate_structured(data, cfg, schema, system, timeout, max_tokens, task_id=task_id)
 
 
 def verify_rewrites(edits, cfg):

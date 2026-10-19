@@ -27,6 +27,7 @@ from app.routes.placement import router as placement_router
 from app.routes.jobs import router as jobs_router
 from app.routes.workspace import router as workspace_router
 from app.services.linkedin import PrivateLinkedInCallback
+from app.routes.documents import router as documents_router
 
 
 @asynccontextmanager
@@ -49,10 +50,11 @@ def create_app() -> FastAPI:
     app.include_router(placement_router)
     app.include_router(jobs_router)
     app.include_router(workspace_router)
+    app.include_router(documents_router)
 
     @app.exception_handler(RequestValidationError)
     async def workspace_validation(request: Request, exc: RequestValidationError):
-        if request.url.path.startswith(('/api/auth', '/api/admin', '/api/placement', '/api/import', '/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
+        if request.url.path.startswith(('/api/documents', '/api/profile-update-proposals', '/api/ai', '/api/auth', '/api/admin', '/api/placement', '/api/import', '/api/resumes', '/api/profile/linkedin', '/api/roadmap/tasks', '/api/journey')):
             first = exc.errors()[0]
             field = '.'.join(str(part) for part in first['loc'] if part not in {'body', 'query'})
             # Never echo uploaded resume/profile input (including invalid Unicode).

@@ -1,46 +1,47 @@
 # Gemini AI Integration — Implementation Progress
 
-## Completed batch
+## Checkpoint (2026-10-19)
 
-**Batch 1 — Centralized Gemini Gateway:** complete.
+Branch: `chore/simplify-journey-page`. Starting head: `7587107`.
+Clean clone verified before edits. The six requested documents and finalized DIL approval/implementation documents were read.
+The current user request authorizes implementation and safe automatic progression; its batch numbering takes precedence over the older plan.
 
-See `GEMINI_BATCH_1_IMPLEMENTATION.md` for the precise implementation and targeted verification result (59 passed).
+## Batch 1 — preserved and verified
 
-## Files changed in this checkpoint
+Existing gateway/adapters were reused, not recreated. Original targeted tests: **59 passed**.
+Existing backend baseline: **183 passed**. No real provider requests.
 
-- `backend/requirements.txt` — adds Alembic as the approved migration dependency; installed into the local development virtual environment.
-- `backend/app/config.py` — adds `GEMINI_TASK_LIMIT_PER_HOUR` configuration.
-- `backend/app/services/ai_gateway.py` — new shared bounded Gemini transport/task policy foundation.
-- `backend/app/services/gemini_resume.py` — compatibility delegation to the gateway.
-- `backend/app/services/gemini_roadmap.py` — compatibility delegation to the gateway.
-- `backend/tests/test_ai_gateway.py` — gateway regression coverage.
-- `docs/architecture/GEMINI_BATCH_1_IMPLEMENTATION.md`
+## Batch 2 — Document Intelligence implementation and automated acceptance passed
 
-## Completed safeguards
+- Shared bounded PDF/DOCX/TXT parser; conservative classifier and deterministic extraction.
+- Separate preview without storage; feature-gated 30-day private review storage, no binary retention.
+- Additive Alembic revision `20261019_01`; legacy startup bootstrap does not create new private tables.
+- Strict bounded Gemini extraction with fresh AI consent, contact redaction, unique source-excerpt/value verification and deterministic fallback.
+- Student-only routes, type correction/supersession, per-item review and conflict confirmation.
+- Accept/edit/reject transaction, current-profile fingerprint, versions, idempotent replay, writer serialization and non-content immutable audit commitments.
+- Evidence provenance; skill levels stay unknown or preserve an existing level. Excluded academic fields cannot be applied.
+- Delete/expiry purge content, excerpts, extraction JSON, current/proposed/applied values and duplicate HMAC; approved facts remain.
+- Maintenance purge entry point; configure its scheduler before enabling review.
+- Durable owner/task request windows and privacy-safe diagnostics added; no general document cache.
+- Profile review card, separate consents, provenance display, edit/reject/conflict, expiry/delete, safe retry keys, session checks, refresh guidance.
 
-- Backend-only SDK/key path.
-- Configurable model and bounded structured JSON invocation.
-- One provider attempt; no automatic provider retry.
-- Input/output task bounds.
-- Stable provider failure classification.
-- In-process owner/task throttle support for new owner-aware tasks.
-- No logging of prompt/document/provider-response content in gateway code.
-- Existing Resume and Roadmap task-specific validation/consent behavior retained through adapters.
+Verification: **22 DIL tests passed**; full backend **205 passed** before the final type-correction audit addition (DIL rechecked afterward); frontend **21 passed**; TypeScript passed; Expo lint passed; Expo web export passed (11 routes).
+Migration test used only a populated synthetic SQLite copy, checked every pre-existing table's complete rows, integrity, foreign keys and repeat upgrade. Rollback-on-audit-failure and concurrent approval replay passed.
 
-## Incomplete batches
+Browser/device accessibility and real Gemini capabilities remain unverified; these are release acceptance gates, not claimed successes.
 
-1. Batch 2: Alembic scaffolding and additive Document Intelligence persistence/routes/service/tests/UI.
-2. Batch 3: Read-only readiness explanation and controlled roadmap context/caching.
-3. Batch 4: LinkedIn AI optimization task through the gateway.
-4. Batch 5: selected-listing AI explanation/extraction through the gateway.
-5. Batch 6: frontend integration, end-to-end regression, device acceptance, and final report.
+## Deployment gate — unresolved policies
 
-## Known constraints
+`DOCUMENT_REVIEW_ENABLED` defaults false. Enabling real review storage requires approval of audit retention/access, provider consent copy, HMAC key rotation/ownership, backup controls and incident response listed in `DOCUMENT_INTELLIGENCE_FINAL_APPROVAL.md`.
+`DOCUMENT_HMAC_KEY` must be a separately managed server secret of at least 32 characters. No production database has been opened or migrated. Only additive migrations are implemented; destructive downgrade is refused.
 
-- A real Gemini capability check was not run because no explicit configured-key authorization was provided; automated tests use mocked SDK responses only.
-- The existing backend still uses `create_all`; Batch 2 must introduce Alembic in a backup-first, additive SQLite migration without applying it to real data.
-- Durable cross-process throttling and owner-scoped cache are intentionally deferred until the required persistence migration exists. No unsafe generic personal-document cache was introduced.
+## Remaining batches (current request)
+
+3. Read-only career readiness explanations and roadmap context.
+4. Career assets shared gateway integration, including LinkedIn.
+5. Genuine retrieved listing requirement/match explanations.
+6. Final integration/regression and final report.
 
 ## Next executable action
 
-Implement Batch 2 in small commits: add Alembic configuration/revision, DIL additive tables and Pydantic contracts, deterministic document proposal service/routes, approval transaction/audit/retention tests, then the Profile UI. Begin only after reading this file and the finalized Document Intelligence approval documents.
+Begin Batch 3 against approved profile evidence and existing deterministic scoring/roadmap services. Keep provider tests mocked and update this checkpoint after its acceptance passes.

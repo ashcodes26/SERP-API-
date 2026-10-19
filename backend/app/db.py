@@ -28,11 +28,13 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def init_db(target: Engine | None = None) -> None:
-    """Create all tables (MVP uses create_all; no Alembic until the schema stabilises)."""
+    """Preserve legacy bootstrap; private AI/review tables require explicit Alembic upgrade."""
     from app import models  # noqa: F401  (register tables)
 
     bound = target or engine
-    Base.metadata.create_all(bound)
+    from app.document_models import Document, Extraction, Proposal, ProposalItem, Audit, AiWindow, AiCache, AiDiagnostic
+    private = {model.__table__.name for model in (Document, Extraction, Proposal, ProposalItem, Audit, AiWindow, AiCache, AiDiagnostic)}
+    Base.metadata.create_all(bound, tables=[t for t in Base.metadata.sorted_tables if t.name not in private])
     from app.services.accounts import backfill_accounts
     with Session(bound) as db:
         backfill_accounts(db)

@@ -430,3 +430,7 @@ class AuthRateLimit(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     window_start: Mapped[datetime] = mapped_column(default=_now)
     attempts: Mapped[int] = mapped_column(default=0)
+
+
+# Register private additive models in the shared metadata.
+from app import document_models  # noqa: E402,F401

@@ -4,6 +4,17 @@
  */
 export type Level = number | null;
 
+export type DocumentType = 'resume' | 'certificate' | 'transcript' | 'project_report' | 'internship_document' | 'unknown';
+export type DocumentValue = { value: string } | { name: string };
+export interface SourceExcerpt { excerpt: string; page: number | null; section: string | null }
+export interface DocumentFact { id: string; field: string; value: DocumentValue; fact_kind: 'explicit'; evidence: SourceExcerpt[]; confidence: number }
+export interface DocumentExtractionResult { schema_version: 'document-extraction-v1'; document_type: DocumentType; classification: { status: string; confidence: number; rationale: string }; facts: DocumentFact[]; suggestions: { id: string; field: string; value: DocumentValue; reason: string; evidence: SourceExcerpt[] }[]; warnings: string[] }
+export interface DocumentItemOut { id: number; field_path: string; operation: string; current_value: DocumentValue | null; proposed_value: DocumentValue | null; evidence: SourceExcerpt[]; fact_kind: 'explicit'; comparison_status: string; decision: string; version: number }
+export interface DocumentProposalOut { id: number; document_id: number; status: string; version: number; items: DocumentItemOut[]; refresh_recommended: boolean }
+export interface DocumentOut { id: number; filename: string | null; document_type: DocumentType; classification_status: string; status: string; expires_at: string; proposal: DocumentProposalOut | null; extraction_status: string; warnings: string[] }
+export interface DocumentDecisionIn { proposal_version: number; item_version: number; decision: 'accept' | 'edit' | 'reject'; edited_value?: DocumentValue; confirm_conflict?: boolean; idempotency_key: string }
+export interface DocumentDecisionOut { proposal: DocumentProposalOut; profile: ProfileOut; replayed: boolean }
+
 export interface CohortIn { name: string; department: string; batch: string; section: string }
 export interface ImportPreviewIn { job_id: number; mapping: Record<string, string> }
 export interface ImportConfirmIn { job_id: number; update_duplicates?: boolean }
@@ -48,7 +59,7 @@ export interface BatchGapOut { cohort_id: number; job: JobOut; student_count: nu
 
 export type SourceType =
   | 'institutional_record' | 'resume' | 'project' | 'certification'
-  | 'self_report' | 'github' | 'linkedin' | 'assessment' | 'demo';
+  | 'self_report' | 'github' | 'linkedin' | 'assessment' | 'demo' | 'document_intelligence';
 export type RequirementType = 'required' | 'preferred';
 export type Priority = 'high' | 'medium' | 'low';
 export type ResourceProvenance = 'serpapi_live' | 'curated_fallback' | 'demo_fixture';
@@ -142,7 +153,7 @@ export interface AssessmentOut {
 export interface DashboardOut {
   student: StudentOut; target_job?: JobOut | null; readiness?: ReadinessOut | null;
   top_gaps: SkillGapOut[]; roadmap_progress: Record<string, number>;
-  next_action?: RoadmapItemOut | null; data_mode: 'live' | 'demo';
+  next_action?: RoadmapItemOut | null; data_mode: 'live' | 'demo' | 'document_intelligence';
 }
 
 export interface ImportIssueOut {

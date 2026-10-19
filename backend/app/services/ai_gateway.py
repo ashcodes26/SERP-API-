@@ -25,6 +25,10 @@ class AiTask:
 
 
 TASKS = {
+    'document_extraction_v1': AiTask('document_extraction_v1', 40_000, 6_000),
+    'readiness_explanation_v1': AiTask('readiness_explanation_v1', 30_000, 1_800),
+    'linkedin_optimization_v1': AiTask('linkedin_optimization_v1', 30_000, 1_800),
+    'job_explanation_v1': AiTask('job_explanation_v1', 30_000, 1_800),
     'resume_review_v1': AiTask('resume_review_v1', 45_000, 6_000),
     'resume_rewrite_verify_v1': AiTask('resume_rewrite_verify_v1', 20_000, 2_000),
     'roadmap_narrative_v1': AiTask('roadmap_narrative_v1', 30_000, 1_800),

@@ -6,14 +6,16 @@ let sessionToken: string | null = null;
 let sessionStudentId: number | null = null;
 let selectedTarget: AnalysisOut | null = null;
 let onUnauthorized: (() => void) | null = null;
+let sessionRevision = 0;
 export const session = {
   onUnauthorized(handler: (() => void) | null) { onUnauthorized = handler; },
-  setToken(token: string | null) { sessionToken = token; },
+  setToken(token: string | null) { sessionToken = token; sessionRevision += 1; },
+  getRevision() { return sessionRevision; },
   setStudentId(id: number | null) { sessionStudentId = id; },
   getStudentId() { return sessionStudentId; },
   setTarget(analysis: AnalysisOut) { selectedTarget = analysis; },
   takeTarget() { const target = selectedTarget; selectedTarget = null; return target; },
-  clear() { sessionToken = null; sessionStudentId = null; selectedTarget = null; },
+  clear() { sessionToken = null; sessionStudentId = null; selectedTarget = null; sessionRevision += 1; },
 };
 export type LoginResponse = import('@/types/contracts').AuthSessionOut;
 
@@ -84,6 +86,18 @@ export function fileForm(asset: DocumentPickerAsset, fields: Record<string, stri
   else form.append('file', { uri: asset.uri, name: asset.name, type: asset.mimeType ?? (asset.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : asset.name.toLowerCase().endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain') } as unknown as Blob);
   return form;
 }
+export const documentsApi = {
+  capabilities: () => request<{ review_enabled: boolean; review_retention_days: number; binary_retained: boolean }>('/api/documents/capabilities'),
+  preview: (asset: DocumentPickerAsset) => request<import('@/types/contracts').DocumentExtractionResult>('/api/documents/preview', { method: 'POST', body: fileForm(asset, {}) }),
+  create: (asset: DocumentPickerAsset, consent: boolean) => request<import('@/types/contracts').DocumentOut>('/api/documents', { method: 'POST', body: fileForm(asset, { storage_consent: String(consent) }) }),
+  list: () => request<import('@/types/contracts').DocumentOut[]>('/api/documents'),
+  get: (id: number) => request<import('@/types/contracts').DocumentOut>(`/api/documents/${id}`),
+  type: (id: number, document_type: import('@/types/contracts').DocumentType, version: number) => request<import('@/types/contracts').DocumentOut>(`/api/documents/${id}/type`, { method: 'PATCH', body: JSON.stringify({ document_type, version }) }),
+  extract: (id: number, version: number, ai_consent: boolean) => request<import('@/types/contracts').DocumentOut>(`/api/documents/${id}/extract`, { method: 'POST', body: JSON.stringify({ version, ai_consent }) }, 60000),
+  decide: (id: number, item: number, body: import('@/types/contracts').DocumentDecisionIn) => request<import('@/types/contracts').DocumentDecisionOut>(`/api/profile-update-proposals/${id}/items/${item}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  refresh: (id: number) => jsonPost<import('@/types/contracts').DocumentOut>(`/api/profile-update-proposals/${id}/refresh`, {}),
+  remove: (id: number) => request<{ deleted: boolean; message: string }>(`/api/documents/${id}`, { method: 'DELETE' }),
+};
 export const resumeApi = {
   candidate: (id: number) => request<import('@/types/contracts').CandidateExtractionOut>(`/api/resumes/${id}/candidate-profile`),
   list: () => request<ResumeWorkspaceOut[]>('/api/resumes'),

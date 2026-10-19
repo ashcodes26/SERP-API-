@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import CareerRoadmap from '@/components/career-roadmap';
 import JourneyInput from '@/components/journey-input';
+import DocumentReview from '@/components/document-review';
 import { BarChart, ScoreRing, SkillGapChart } from '@/components/analytics';
 import { design as d } from '@/constants/design';
 import { ApiError, careerApi, jobsApi, session } from '@/api/client';
@@ -96,6 +97,7 @@ export default function HomeScreen() {
     {busy && <View style={s.loading}><ActivityIndicator size="large" color={d.accent} /><Text style={s.muted}>Saving your progress safely…</Text></View>}
     {stage === 'input' && <JourneyInput onSaved={inputSaved} onCancel={() => setStage('profile')} />}
     {stage !== 'input' && stage !== 'roadmap' && session.getStudentId() && <Action title={profile ? 'Update profile details' : 'Add profile details'} secondary onPress={() => setStage('input')} disabled={busy} />}
+    {stage === 'profile' && profile && <DocumentReview onApplied={saved => { setProfile(saved); setAnalysis(null); }} />}
     {stage === 'profile' && profile && role && <>
       <Panel tone="raised"><Text style={s.eyebrow}>{profile.student.is_synthetic ? 'SYNTHETIC STUDENT PROFILE' : 'CONFIRMED PROFILE'}</Text><Text style={s.cardTitle}>{profile.student.name}</Text><Text style={s.note}>{profile.student.program || 'Program not recorded'} · {profile.student.specialization || 'Specialization not recorded'}</Text><View style={s.profileFacts}><Metric label="Student ID" value={profile.student.student_id} /><Metric label="CGPA" value={profile.student.cgpa?.toString() ?? 'Not recorded'} /><Metric label="Evidence records" value={String(profile.evidence.length)} /></View></Panel>
       <Panel><Text style={s.eyebrow}>SAVED SKILL EVIDENCE</Text><Text style={s.cardTitle}>Confirmed competencies</Text><Text style={s.note}>These competencies are saved to your profile. Levels without sufficient evidence remain unknown rather than assumed.</Text>{profile.competencies.length ? <BarChart max={5} unit="/5" rows={profile.competencies.map(item => ({ label: item.skill.canonical_name, value: item.level }))} /> : <View style={s.empty}><Text style={s.note}>No confirmed skill evidence yet. Upload a document to review detected skills before saving.</Text></View>}</Panel>

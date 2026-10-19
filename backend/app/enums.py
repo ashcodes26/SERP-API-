@@ -11,6 +11,7 @@ class SourceType(str, Enum):
     linkedin = "linkedin"
     assessment = "assessment"
     demo = "demo"
+    document_intelligence = "document_intelligence"
 
 
 class RequirementType(str, Enum):

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     gemini_model: str = 'gemini-3.5-flash-lite'
     gemini_timeout_seconds: float = Field(default=30, ge=1, le=45)
     gemini_task_limit_per_hour: int = Field(default=5, ge=1, le=100)
+    # Enable only after deployment privacy/retention, consent and key policies are approved.
+    document_review_enabled: bool = False
+    document_hmac_key: SecretStr | None = None
 
     auth_signing_key: SecretStr | None = None
     demo_password: SecretStr | None = None

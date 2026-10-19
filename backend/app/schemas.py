@@ -27,6 +27,120 @@ FORMULA_VERSION = "v0-unset"  # replaced by the Phase 3 scoring service
 Level = int | None  # 0-5, None = unknown
 
 
+DocumentType = Literal['resume', 'certificate', 'transcript', 'project_report', 'internship_document', 'unknown']
+DocumentField = Literal['name', 'department', 'program', 'specialization', 'semester', 'graduation_year',
+                        'skills', 'projects', 'experience', 'certifications', 'portfolio_urls', 'github_urls', 'linkedin_urls']
+
+
+class DocumentStrict(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True, str_strip_whitespace=True)
+
+
+class SourceExcerpt(DocumentStrict):
+    excerpt: str = Field(min_length=1, max_length=600)
+    page: int | None = Field(default=None, ge=1, le=30)
+    section: str | None = Field(default=None, max_length=80)
+
+
+class DocumentScalar(DocumentStrict):
+    value: str = Field(min_length=1, max_length=600)
+
+
+class DocumentSkill(DocumentStrict):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class DocumentFact(DocumentStrict):
+    id: str = Field(pattern=r'^fact-[A-Za-z0-9_-]{1,60}$')
+    field: DocumentField
+    value: DocumentScalar | DocumentSkill
+    fact_kind: Literal['explicit'] = 'explicit'
+    evidence: list[SourceExcerpt] = Field(min_length=1, max_length=5)
+    confidence: float = Field(ge=0, le=1, default=0.5)
+
+    @model_validator(mode='after')
+    def field_value(self):
+        if (self.field == 'skills') != isinstance(self.value, DocumentSkill):
+            raise ValueError('Field value does not match field policy')
+        return self
+
+
+class DocumentSuggestion(DocumentStrict):
+    id: str = Field(pattern=r'^suggestion-[A-Za-z0-9_-]{1,60}$')
+    field: DocumentField
+    value: DocumentScalar | DocumentSkill
+    reason: str = Field(min_length=1, max_length=300)
+    evidence: list[SourceExcerpt] = Field(min_length=1, max_length=5)
+
+
+class DocumentClassification(DocumentStrict):
+    status: Literal['classified', 'uncertain', 'unsupported']
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = Field(min_length=1, max_length=300)
+
+
+class DocumentExtractionResult(DocumentStrict):
+    schema_version: Literal['document-extraction-v1'] = 'document-extraction-v1'
+    document_type: DocumentType
+    classification: DocumentClassification
+    facts: list[DocumentFact] = Field(max_length=100)
+    suggestions: list[DocumentSuggestion] = Field(default_factory=list, max_length=25)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+
+
+class DocumentAiIn(DocumentStrict):
+    ai_consent: bool
+    version: int = Field(ge=1)
+
+
+class DocumentTypeIn(DocumentStrict):
+    document_type: DocumentType
+    version: int = Field(ge=1)
+
+
+class DocumentDecisionIn(DocumentStrict):
+    proposal_version: int = Field(ge=1)
+    item_version: int = Field(ge=1)
+    decision: Literal['accept', 'edit', 'reject']
+    edited_value: DocumentScalar | DocumentSkill | None = None
+    confirm_conflict: bool = False
+    idempotency_key: str = Field(pattern=r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+
+
+class DocumentItemOut(DocumentStrict):
+    id: int
+    field_path: str
+    operation: str
+    current_value: DocumentScalar | DocumentSkill | None
+    proposed_value: DocumentScalar | DocumentSkill | None
+    evidence: list[SourceExcerpt]
+    fact_kind: Literal['explicit']
+    comparison_status: str
+    decision: str
+    version: int
+
+
+class DocumentProposalOut(DocumentStrict):
+    id: int
+    document_id: int
+    status: str
+    version: int
+    items: list[DocumentItemOut]
+    refresh_recommended: bool
+
+
+class DocumentOut(DocumentStrict):
+    id: int
+    filename: str | None
+    document_type: DocumentType
+    classification_status: str
+    status: str
+    expires_at: datetime
+    proposal: DocumentProposalOut | None = None
+    extraction_status: str = 'not_requested'
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

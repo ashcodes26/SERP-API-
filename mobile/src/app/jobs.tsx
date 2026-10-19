@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { careerApi, jobsApi, session } from '@/api/client';
 import { Action, Card, ui } from '@/components/career-ui';
 import CareerRoadmap from '@/components/career-roadmap';
+import AiExplanation from '@/components/ai-explanation';
 import { ScoreRing, StatStrip } from '@/components/analytics';
 import { design as d } from '@/constants/design';
 import { OpportunitiesHeader } from '@/components/opportunities-header';
@@ -75,6 +76,7 @@ export default function JobsScreen() {
       {!studentId ? <Action secondary disabled={busy} onPress={() => void perform(async () => { const ids = await careerApi.seed(); setStudentId(ids.student_id); })}>Load synthetic student profile for comparison</Action> : <Action disabled={busy || !detail.skills.some(s => s.requirement_type !== 'mentioned')} onPress={analyze}>Compare with my student evidence →</Action>}
     </Card>}
     {match && <>
+      <AiExplanation key={`opportunity:${match.listing.id}:${match.analysis.id}`} path={`/api/ai/opportunities/${match.listing.id}/analysis/${match.analysis.id}`} label="Explain this opportunity match" notice="Sends genuine retrieved requirement excerpts, deterministic comparison and approved evidence references. Source URLs and SerpApi search remain authoritative; opening availability is unverified." />
       <Card><Text style={ui.kicker}>YOUR RECORDED EVIDENCE / {match.analysis.readiness.formula_version}</Text><Text style={ui.heading}>How this listing aligns with your evidence</Text><ScoreRing value={match.analysis.readiness.measurable ? match.analysis.readiness.alignment * 100 : null} label="Role alignment" /><Text style={ui.body}>{match.analysis.readiness.label}</Text><Text style={ui.muted}>Measured evidence coverage: {pct(match.analysis.readiness.evidence_coverage)} / Confidence: {pct(match.analysis.readiness.confidence)}. This compares recorded student evidence with observed listing terms; it is not an eligibility decision or hiring prediction.</Text>
         <Text style={ui.heading}>Recorded evidence</Text><Text style={ui.body}>{match.evidenced_skills.join(', ') || 'No matching skill evidence recorded.'}</Text>
         <Text style={ui.heading}>Unknown evidence or proficiency</Text><Text style={ui.body}>{match.unknown_skills.join(', ') || 'No additional unknown competencies identified.'}</Text>

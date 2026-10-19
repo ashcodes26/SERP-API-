@@ -92,3 +92,49 @@ def linkedin(body: s.AiExplainIn, db: Session = Depends(get_db), student=Depends
         result.status = 'stale'; result.insights = []; result.sources = []
         result.message = 'Your saved LinkedIn source changed. Reload before another request.'
     return result
+
+
+def opportunity_context(db, student, job_id, analysis_id):
+    from app.services.job_discovery import get_listing, extract_requirements
+    from app.services.gemini_resume import source_excerpt
+    listing = get_listing(db, job_id)
+    meta = db.get(models.DiscoveredJob, job_id)
+    if not listing or not meta or listing.provenance.value != 'serpapi_live' or not listing.source_url:
+        error(422, 'RETRIEVED_LISTING_REQUIRED', 'Choose a genuine retrieved listing with an original source URL')
+    analysis = db.get(models.Analysis, analysis_id)
+    if not analysis or analysis.student_pk != student.id or analysis.job_id != job_id:
+        error(404, 'ANALYSIS_NOT_FOUND', 'Compare this listing with your evidence first')
+    gaps, gap_actions, context, recommendations = readiness_context(db, student, analysis_id)
+    sources, allowed = [], {}
+    # Re-extract from the actual retrieved description; never trust a model-created requirement.
+    for index, requirement in enumerate(extract_requirements(listing.description)[:8]):
+        if requirement.requirement_type == 'mentioned' or not source_excerpt(listing.description, requirement.excerpt): continue
+        # A truncated excerpt must still explicitly name this canonical skill.
+        if not any(r.name == requirement.name for r in extract_requirements(requirement.excerpt)): continue
+        source_id = f'listing:{job_id}:{index}'
+        sources.append(s.AiSourceOut(id=source_id, label=f'{requirement.name}: {requirement.requirement_type}',
+            detail=f'Retrieved listing excerpt: {requirement.excerpt}', source_url=str(listing.source_url)))
+        allowed[source_id] = ['align']
+    if not sources: error(422, 'LISTING_EVIDENCE_INSUFFICIENT', 'This listing has no verifiable explicit requirements')
+    sources += gaps[:4]; allowed.update({source.id: gap_actions[source.id] for source in gaps[:4]})
+    context['listing_version'] = digest(meta.listing)
+    context['opening_status'] = 'not_verified'
+    return sources, allowed, context, recommendations
+
+
+@router.post('/opportunities/{job_id}/analysis/{analysis_id}', response_model=s.AiExplanationOut)
+def opportunity(job_id: int, analysis_id: int, body: s.AiExplainIn, db: Session = Depends(get_db), student=Depends(owner)):
+    sources, allowed, context, recommendations = opportunity_context(db, student, job_id, analysis_id)
+    owner_id = student.id; engine = db.bind; db.rollback()
+    result = explain(engine, owner_id, 'job_explanation_v1', sources, allowed, context, body.ai_consent, get_settings())
+    student = db.get(models.Student, owner_id)
+    try:
+        _, _, latest, _ = opportunity_context(db, student, job_id, analysis_id)
+    except Exception:
+        latest = None
+    if latest != context:
+        result.status = 'stale'; result.insights = []; result.sources = []
+        result.message = 'The listing or approved profile evidence changed. Reload the comparison.'
+    else:
+        result.recommendations = recommendations
+    return result

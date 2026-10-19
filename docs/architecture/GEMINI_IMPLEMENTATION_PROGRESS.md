@@ -39,7 +39,7 @@ Browser/device accessibility and real Gemini capabilities remain unverified; the
 
 3. **Implemented / automated acceptance passed:** career readiness explanations and roadmap context.
 4. **Implemented / automated acceptance passed:** Career assets shared gateway integration, including LinkedIn.
-5. Genuine retrieved listing requirement/match explanations.
+5. **Implemented / automated acceptance passed:** Genuine retrieved listing requirement/match explanations.
 6. Final integration/regression and final report.
 
 ## Next executable action
@@ -71,3 +71,15 @@ Next: Batch 4, preserve Resume workflows and add independently consented LinkedI
 Verification: full backend **220 passed**; targeted assets/workspace/grounded tests **76 passed**; frontend **21 passed**; TypeScript, Expo lint and Expo web export passed (11 routes, `.expo/export-batch4`). One new budget test initially failed because its fixture mocked the gateway before quota validation; corrected the test and reran the full suite. No real provider calls.
 
 Next: Batch 5, genuine retrieved-listing requirements and match explanations with source URLs and deterministic scores preserved.
+
+## Batch 5 checkpoint
+
+- Added `/api/ai/opportunities/{job_id}/analysis/{analysis_id}`; requires the student's own matching analysis and a stored `serpapi_live` DiscoveredJob with a source URL.
+- Explicit requirements are re-extracted and source-excerpt verified against the actual retrieved description. No Gemini output creates a listing, requirement, proficiency, analysis or deterministic score.
+- Explanation selection combines listing references with deterministic gaps and approved student evidence references. Server output preserves original source URLs and unknown-opening-status notices.
+- Owner-scoped cache invalidates on listing content/version, approved evidence, model, prompt/schema or context changes. Existing SerpApi search/cache contracts are untouched.
+- Jobs UI adds separate consent/status/evidence explanation controls after the existing comparison.
+
+Verification: full backend **224 passed**, including real-listing gate, fixture/fallback rejection, ungrounded requirement rejection, ownership, score stability and listing-version invalidation; frontend **21 passed**; TypeScript, Expo lint and web export passed (11 routes, `.expo/export-batch5`). Tests simulate retrieval with synthetic records; no live provider/search quota was used.
+
+Next: Batch 6, final adversarial/lifecycle integration checks, release runbook, final regression and report.

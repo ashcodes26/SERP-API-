@@ -145,3 +145,50 @@ def test_owner_scope_enforces_durable_budget_for_legacy_adapters(review, monkeyp
     with ai_gateway.owner_scope(engine,ids[0]):
         with pytest.raises(ai_gateway.AiRateLimited):
             gemini_resume.request_structured({},cfg,{},'system',1,6000)
+
+
+def listing(factory, ids, provenance='serpapi_live'):
+    from app.services.job_discovery import normalize, persist
+    from datetime import UTC, datetime
+    raw=[{'title':'Synthetic retrieved role','company_name':'Synthetic Co','description':'Requirements:\nPython required at level 3/5.\nPreferred: SQL.',
+          'apply_options':[{'link':'https://example.org/synthetic-vacancy'}], 'job_id':'synthetic-provider-id'}]
+    with factory() as db:
+        item=persist(db,normalize(raw,datetime.now(UTC),get_settings()))[0]
+        if provenance!='serpapi_live':
+            row=db.get(models.DiscoveredJob,item.id);row.listing={**row.listing,'provenance':provenance}
+        db.commit()
+        report=analyze(db,db.get(models.Student,ids[0]),db.get(models.Job,item.id))
+        return item.id,report.id
+
+
+def test_opportunity_uses_real_retrieved_requirements_and_preserves_scores_cache_and_source(review,monkeypatch):
+    client,factory,ids=review;job_id,analysis_id=listing(factory,ids)
+    calls=[]
+    def generate(*args,**kwargs):calls.append(args[0]);return response(f'listing:{job_id}:0','align')
+    monkeypatch.setattr(ai_gateway,'generate_structured',generate)
+    path=f'/api/ai/opportunities/{job_id}/analysis/{analysis_id}'
+    with factory() as db:before=db.get(models.Analysis,analysis_id).alignment
+    first=client.post(path,json={'ai_consent':True});assert first.status_code==200,first.text
+    result=first.json();assert result['status']=='available' and result['sources'][0]['source_url']=='https://example.org/synthetic-vacancy'
+    assert 'Python required at level 3/5.' in result['sources'][0]['detail']
+    assert client.post(path,json={'ai_consent':True}).json()['cache_hit'] and len(calls)==1
+    with factory() as db:
+        assert db.get(models.Analysis,analysis_id).alignment==before
+        assert not db.scalar(select(models.JobSearchCache))
+        meta=db.get(models.DiscoveredJob,job_id);meta.listing={**meta.listing,'description':'Requirements:\nPython required at level 3/5.\nPreferred: Docker.'};db.commit()
+    assert not client.post(path,json={'ai_consent':True}).json()['cache_hit']
+
+
+@pytest.mark.parametrize('provenance',['demo_fixture','curated_fallback'])
+def test_opportunity_does_not_treat_fixtures_as_genuine_listing(review,provenance):
+    client,factory,ids=review;job_id,analysis_id=listing(factory,ids,provenance)
+    assert client.post(f'/api/ai/opportunities/{job_id}/analysis/{analysis_id}',json={'ai_consent':True}).status_code==422
+
+
+def test_opportunity_rejects_model_requirement_and_unrelated_analysis(review,monkeypatch):
+    client,factory,ids=review;job_id,analysis_id=listing(factory,ids)
+    monkeypatch.setattr(ai_gateway,'generate_structured',lambda *args,**kwargs:response('invented:AWS','align'))
+    result=client.post(f'/api/ai/opportunities/{job_id}/analysis/{analysis_id}',json={'ai_consent':True}).json()
+    assert result['status']=='invalid_output' and not result['insights']
+    app.dependency_overrides[current_principal]=lambda:Principal('student',ids[1])
+    assert client.post(f'/api/ai/opportunities/{job_id}/analysis/{analysis_id}',json={'ai_consent':True}).status_code==404

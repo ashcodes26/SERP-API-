@@ -29,6 +29,7 @@ def migrate(url):
 @pytest.fixture
 def review(tmp_path, monkeypatch):
     monkeypatch.setenv('APP_ENV', 'test'); monkeypatch.setenv('DOCUMENT_REVIEW_ENABLED', 'true')
+    monkeypatch.setenv('GROUNDED_AI_ENABLED', 'true')
     monkeypatch.setenv('DOCUMENT_HMAC_KEY', 'synthetic-key-for-review-tests-only-12345')
     monkeypatch.setenv('GEMINI_API_KEY', 'synthetic-test-key'); monkeypatch.setenv('SERPAPI_API_KEY', '')
     get_settings.cache_clear()

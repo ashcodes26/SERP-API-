@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     gemini_task_limit_per_hour: int = Field(default=5, ge=1, le=100)
     # Enable only after deployment privacy/retention, consent and key policies are approved.
     document_review_enabled: bool = False
+    grounded_ai_enabled: bool = False
     document_hmac_key: SecretStr | None = None
 
     auth_signing_key: SecretStr | None = None

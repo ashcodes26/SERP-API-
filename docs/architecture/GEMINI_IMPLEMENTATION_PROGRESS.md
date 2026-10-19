@@ -1,4 +1,4 @@
-# Gemini AI Integration — Implementation Progress
+# Gemini AI Integration â€” Implementation Progress
 
 ## Checkpoint (2026-10-19)
 
@@ -6,12 +6,12 @@ Branch: `chore/simplify-journey-page`. Starting head: `7587107`.
 Clean clone verified before edits. The six requested documents and finalized DIL approval/implementation documents were read.
 The current user request authorizes implementation and safe automatic progression; its batch numbering takes precedence over the older plan.
 
-## Batch 1 — preserved and verified
+## Batch 1 â€” preserved and verified
 
 Existing gateway/adapters were reused, not recreated. Original targeted tests: **59 passed**.
 Existing backend baseline: **183 passed**. No real provider requests.
 
-## Batch 2 — Document Intelligence implementation and automated acceptance passed
+## Batch 2 â€” Document Intelligence implementation and automated acceptance passed
 
 - Shared bounded PDF/DOCX/TXT parser; conservative classifier and deterministic extraction.
 - Separate preview without storage; feature-gated 30-day private review storage, no binary retention.
@@ -30,14 +30,14 @@ Migration test used only a populated synthetic SQLite copy, checked every pre-ex
 
 Browser/device accessibility and real Gemini capabilities remain unverified; these are release acceptance gates, not claimed successes.
 
-## Deployment gate — unresolved policies
+## Deployment gate â€” unresolved policies
 
 `DOCUMENT_REVIEW_ENABLED` defaults false. Enabling real review storage requires approval of audit retention/access, provider consent copy, HMAC key rotation/ownership, backup controls and incident response listed in `DOCUMENT_INTELLIGENCE_FINAL_APPROVAL.md`.
 `DOCUMENT_HMAC_KEY` must be a separately managed server secret of at least 32 characters. No production database has been opened or migrated. Only additive migrations are implemented; destructive downgrade is refused.
 
 ## Remaining batches (current request)
 
-3. Read-only career readiness explanations and roadmap context.
+3. **Implemented / automated acceptance passed:** career readiness explanations and roadmap context.
 4. Career assets shared gateway integration, including LinkedIn.
 5. Genuine retrieved listing requirement/match explanations.
 6. Final integration/regression and final report.
@@ -45,3 +45,18 @@ Browser/device accessibility and real Gemini capabilities remain unverified; the
 ## Next executable action
 
 Begin Batch 3 against approved profile evidence and existing deterministic scoring/roadmap services. Keep provider tests mocked and update this checkpoint after its acceptance passes.
+
+## Batch 3 checkpoint
+
+- Added student-owned `/api/ai/readiness/{analysis_id}` with current deterministic scoring, approved evidence references, allowed action selection, and post-provider source-change detection.
+- Gemini returns only source IDs/action enums. Server renders explanations; no model score/proficiency/candidate fact is accepted.
+- Owner-scoped cache persists only validated IDs/enums for one hour; context includes role/profile/evidence/model/prompt/schema versions. Document text is never cached here.
+- Durable quota windows are atomic across sessions. Roadmap adapter receives owner scope while retaining its existing API and mock seams.
+- Added read-only personalized learning recommendations through `learning.py`; existing milestones/resources/status/completion evidence are preserved.
+- Existing roadmap generation/export remains user initiated. Learner descriptions are best-effort redacted.
+- Readiness and roadmap UI use separate request consent, safe status/errors, evidence refs and session guards.
+- New explanation features default off (`GROUNDED_AI_ENABLED=false`) pending provider consent/privacy deployment approval.
+
+Verification: full backend **217 passed**; targeted document/readiness/roadmap **37 passed**; frontend **21 passed**; TypeScript and Expo lint passed; Expo web export passed to `.expo/export-batch3` (11 routes). An earlier export failed to write into the old `dist` directory (EPERM); the clean-directory rerun succeeded. Provider and manual browser/device behavior remain unverified.
+
+Next: Batch 4, preserve Resume workflows and add independently consented LinkedIn optimization through the shared gateway.

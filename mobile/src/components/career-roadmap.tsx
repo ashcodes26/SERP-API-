@@ -3,6 +3,7 @@ import { ActivityIndicator, Platform, Text, View } from 'react-native';
 import { jobsApi, session } from '@/api/client';
 import { Action, Card, ui } from '@/components/career-ui';
 import { Check, Field } from '@/components/workspace-controls';
+import AiExplanation from '@/components/ai-explanation';
 import { design as d } from '@/constants/design';
 import type { RoadmapAiOut, RoadmapItemOut } from '@/types/contracts';
 
@@ -43,6 +44,7 @@ export default function CareerRoadmap({ items, onChange, analysisId }: Props) {
   };
 
   return <View style={{ gap: 22 }}>
+    {analysisId && <AiExplanation key={`learning:${analysisId}`} path={`/api/ai/readiness/${analysisId}`} label="Prioritize learning with evidence" notice="Sends saved role requirements, deterministic gaps, skill levels and approved evidence references. Learning resources reuse the existing roadmap service." />}
     <Card><Text style={ui.kicker}>DETERMINISTIC ROADMAP</Text><Text style={ui.heading}>Your learning roadmap</Text><Text style={ui.body}>This plan is based on the selected role and your saved alignment analysis. It is separate from the optional Gemini plan below.</Text>
       {items.length ? <View style={{ gap: 12 }}>{items.map((item, index) => <View key={item.id} style={{ gap: 6, padding: 14, borderWidth: 1, borderColor: d.border, borderRadius: 8, backgroundColor: d.elevated }}><Text style={ui.label}>STEP {String(index + 1).padStart(2, '0')}{item.week ? ` · WEEK ${item.week}` : ''} · {readableStatus(item.status)}</Text><Text style={ui.body}>{item.task}</Text>{item.objective && <Text style={ui.muted}>{item.objective}</Text>}{item.resource_title && <Text style={ui.muted}>Suggested resource: {item.resource_title}</Text>}{item.completion_criteria && <Text style={ui.muted}>Completion: {item.completion_criteria}</Text>}</View>)}</View> : <View style={{ padding: 14, borderWidth: 1, borderColor: d.border, borderRadius: 8, backgroundColor: d.elevated }}><Text style={ui.body}>No roadmap items were returned yet. Return to Role Alignment and build the roadmap again.</Text></View>}
     </Card>

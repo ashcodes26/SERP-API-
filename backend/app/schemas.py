@@ -141,6 +141,54 @@ class DocumentOut(DocumentStrict):
     warnings: list[str] = Field(default_factory=list)
 
 
+class AiExplainIn(DocumentStrict):
+    ai_consent: bool
+
+
+class AiSelection(DocumentStrict):
+    source_id: str = Field(min_length=1, max_length=80)
+    action: Literal['assess', 'practice', 'document', 'clarify', 'align']
+
+
+class AiSelections(DocumentStrict):
+    items: list[AiSelection] = Field(min_length=1, max_length=12)
+
+
+class AiSourceOut(DocumentStrict):
+    id: str
+    label: str
+    detail: str
+    evidence_ids: list[int] = Field(default_factory=list)
+    source_url: str | None = None
+
+
+class AiInsightOut(DocumentStrict):
+    source_id: str
+    action: str
+    explanation: str
+
+
+class LearningRecommendationOut(DocumentStrict):
+    skill_id: int
+    task: str
+    resource_title: str | None
+    resource_url: str | None
+    resource_provenance: str | None
+    milestone_id: int | None
+    status: str
+
+
+class AiExplanationOut(DocumentStrict):
+    status: Literal['not_requested', 'available', 'unavailable', 'quota_limit', 'timeout', 'blocked', 'invalid_output', 'stale']
+    message: str
+    model: str
+    cache_hit: bool = False
+    context_version: str
+    sources: list[AiSourceOut] = Field(default_factory=list)
+    insights: list[AiInsightOut] = Field(default_factory=list)
+    recommendations: list[LearningRecommendationOut] = Field(default_factory=list)
+
+
 class ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from threading import Lock
@@ -45,6 +47,17 @@ class AiRateLimited(AiGatewayError):
 
 _windows: dict[tuple[int, str], deque[float]] = defaultdict(deque)
 _window_lock = Lock()
+_owner_scope = ContextVar('ai_owner_scope', default=None)
+
+
+@contextmanager
+def owner_scope(engine, owner_id):
+    """Supply owner budgets without changing the existing adapter/test seams."""
+    token = _owner_scope.set((engine, owner_id))
+    try:
+        yield
+    finally:
+        _owner_scope.reset(token)
 
 
 def classify_provider_error(exc: Exception) -> str:
@@ -100,7 +113,18 @@ def generate_structured(data: object, cfg: Any, schema: dict, system: str, timeo
         raise AiGatewayError('Task input limit exceeded')
     if not getattr(cfg, 'gemini_api_key', None) or not cfg.gemini_api_key.get_secret_value().strip():
         raise AiGatewayError('Gemini is not configured')
-    check_task_limits(task_id, owner_id, cfg)
+    scope = _owner_scope.get()
+    if scope is not None:
+        from sqlalchemy import inspect
+        from app.services.ai_runtime import reserve
+        engine, scoped_owner = scope
+        if 'ai_request_windows' in inspect(engine).get_table_names():
+            reserve(engine, scoped_owner, task_id, cfg)
+        else:
+            # Compatibility for pre-migration deployments; isolated per database/owner.
+            check_task_limits(task_id, hash((str(engine.url), scoped_owner)), cfg)
+    else:
+        check_task_limits(task_id, owner_id, cfg)
     from google import genai
     from google.genai import types
     # attempts=1 includes the initial request. Provider retries and tool calls are disabled.

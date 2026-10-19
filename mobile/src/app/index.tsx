@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import CareerRoadmap from '@/components/career-roadmap';
 import JourneyInput from '@/components/journey-input';
 import DocumentReview from '@/components/document-review';
+import AiExplanation from '@/components/ai-explanation';
 import { BarChart, ScoreRing, SkillGapChart } from '@/components/analytics';
 import { design as d } from '@/constants/design';
 import { ApiError, careerApi, jobsApi, session } from '@/api/client';
@@ -96,6 +97,7 @@ export default function HomeScreen() {
     {error && <Panel tone="notice"><Text accessibilityRole="alert" style={s.errorTitle}>We could not complete that request</Text><Text style={s.note}>{error}</Text>{retry && <Action title="Try again" secondary onPress={retry} />}</Panel>}
     {busy && <View style={s.loading}><ActivityIndicator size="large" color={d.accent} /><Text style={s.muted}>Saving your progress safely…</Text></View>}
     {stage === 'input' && <JourneyInput onSaved={inputSaved} onCancel={() => setStage('profile')} />}
+    {stage === 'analysis' && analysis && <AiExplanation key={`readiness:${analysis.id}`} path={`/api/ai/readiness/${analysis.id}`} label="Explain role readiness" notice="Sends saved role requirements, deterministic gaps, skill levels and approved evidence references." />}
     {stage !== 'input' && stage !== 'roadmap' && session.getStudentId() && <Action title={profile ? 'Update profile details' : 'Add profile details'} secondary onPress={() => setStage('input')} disabled={busy} />}
     {stage === 'profile' && profile && <DocumentReview onApplied={saved => { setProfile(saved); setAnalysis(null); }} />}
     {stage === 'profile' && profile && role && <>

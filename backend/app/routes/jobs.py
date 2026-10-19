@@ -125,7 +125,10 @@ def ai_roadmap(student_id: int, analysis_id: int, request: RoadmapAiIn, db: Sess
         raise HTTPException(404, detail={'code': 'JOB_NOT_FOUND', 'message': 'Analyzed role not found'})
     scored = score_role(get_job(db, job), get_profile(db, selected).competencies)
     report = SimpleNamespace(job=get_job(db, job), gaps=scored.gaps)
-    return generate_ai_roadmap(report, request.description, request.consent, get_settings())
+    from app.services.ai_gateway import owner_scope
+    engine = db.bind; owner_id = selected.id; db.rollback()
+    with owner_scope(engine, owner_id):
+        return generate_ai_roadmap(report, request.description, request.consent, get_settings())
 
 
 @router.patch('/roadmap/items/{item_id}', response_model=RoadmapItemOut)

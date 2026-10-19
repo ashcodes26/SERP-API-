@@ -14,6 +14,9 @@ export interface DocumentProposalOut { id: number; document_id: number; status: 
 export interface DocumentOut { id: number; filename: string | null; document_type: DocumentType; classification_status: string; status: string; expires_at: string; proposal: DocumentProposalOut | null; extraction_status: string; warnings: string[] }
 export interface DocumentDecisionIn { proposal_version: number; item_version: number; decision: 'accept' | 'edit' | 'reject'; edited_value?: DocumentValue; confirm_conflict?: boolean; idempotency_key: string }
 export interface DocumentDecisionOut { proposal: DocumentProposalOut; profile: ProfileOut; replayed: boolean }
+export interface AiSourceOut { id: string; label: string; detail: string; evidence_ids: number[]; source_url: string | null }
+export interface LearningRecommendationOut { skill_id: number; task: string; resource_title: string | null; resource_url: string | null; resource_provenance: string | null; milestone_id: number | null; status: string }
+export interface AiExplanationOut { status: 'not_requested' | 'available' | 'unavailable' | 'quota_limit' | 'timeout' | 'blocked' | 'invalid_output' | 'stale'; message: string; model: string; cache_hit: boolean; context_version: string; sources: AiSourceOut[]; insights: { source_id: string; action: string; explanation: string }[]; recommendations: LearningRecommendationOut[] }
 
 export interface CohortIn { name: string; department: string; batch: string; section: string }
 export interface ImportPreviewIn { job_id: number; mapping: Record<string, string> }

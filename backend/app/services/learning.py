@@ -60,6 +60,23 @@ def current_readiness(db: Session, student: models.Student, job: models.Job) -> 
     return score_role(get_job(db, job), get_profile(db, student).competencies).readiness
 
 
+def recommendations_for_gaps(db, student, analysis, gaps):
+    """Read-only companion to create_roadmap: reuse saved resources/progress or labelled curated links."""
+    from app.schemas import LearningRecommendationOut
+    result = []
+    for gap in gaps[:8]:
+        saved = db.scalar(select(models.RoadmapItem).where(models.RoadmapItem.student_pk == student.id,
+            models.RoadmapItem.analysis_id == analysis.id, models.RoadmapItem.skill_id == gap.skill.id))
+        title, url = CURATED.get(gap.skill.canonical_name, DEFAULT_RESOURCE)
+        result.append(LearningRecommendationOut(skill_id=gap.skill.id,
+            task=saved.task if saved else f'Practice {gap.skill.canonical_name} and record your own evidence',
+            resource_title=saved.resource_title if saved else title,
+            resource_url=saved.resource_url if saved else url,
+            resource_provenance=saved.resource_provenance if saved else 'curated_fallback',
+            milestone_id=saved.id if saved else None, status=saved.status if saved else 'not_started'))
+    return result
+
+
 async def create_roadmap(db: Session, student: models.Student, analysis: models.Analysis,
                          settings: Settings) -> list[RoadmapItemOut]:
     existing = db.scalars(select(models.RoadmapItem).where(

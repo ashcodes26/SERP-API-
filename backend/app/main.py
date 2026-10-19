@@ -28,6 +28,7 @@ from app.routes.jobs import router as jobs_router
 from app.routes.workspace import router as workspace_router
 from app.services.linkedin import PrivateLinkedInCallback
 from app.routes.documents import router as documents_router
+from app.routes.ai import router as ai_router
 
 
 @asynccontextmanager
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(workspace_router)
     app.include_router(documents_router)
+    app.include_router(ai_router)
 
     @app.exception_handler(RequestValidationError)
     async def workspace_validation(request: Request, exc: RequestValidationError):

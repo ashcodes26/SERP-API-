@@ -215,7 +215,14 @@ def test_populated_sqlite_additive_migration_preserves_every_existing_table(tmp_
     from sqlalchemy.orm import Session
     path = tmp_path / 'synthetic-original.db'; url = f'sqlite:///{path}'
     engine = make_engine(url); init_db(engine)
-    with Session(engine) as db: seed_demo(db)
+    with Session(engine) as db:
+        student,job=seed_demo(db)
+        skill=db.scalar(select(models.Skill))
+        db.add(models.RoadmapItem(student_pk=student.id,skill_id=skill.id,task='Keep synthetic progress',status='done',completion_evidence='Completed synthetic evidence'))
+        db.add(models.LinkedInProfile(student_pk=student.id,profile_text='About: Synthetic saved profile content.',confirmed=True,import_method='pasted_summary'))
+        workspace=models.ResumeWorkspace(student_pk=student.id,filename='synthetic.txt',original_text=SOURCE,revised_text=SOURCE,target={},decisions={})
+        db.add(workspace);db.flush()
+        db.add(models.ResumeRevision(workspace_id=workspace.id,version=1,text=SOURCE));db.commit()
     tables = inspect(engine).get_table_names()
     with engine.connect() as conn:
         before = {t: conn.execute(text(f'SELECT * FROM "{t}"')).fetchall() for t in tables}
@@ -257,3 +264,35 @@ def test_concurrent_approval_applies_once(review):
     with ThreadPoolExecutor(max_workers=2) as pool: results = list(pool.map(lambda _: apply(), range(2)))
     assert sorted(results) == [False, True]
     with factory() as db: assert len(db.scalars(select(models.Evidence)).all()) == 1
+
+
+def test_expired_idempotent_replay_purges_source_values_before_response(review):
+    client,factory,ids=review
+    doc=create(client);p=doc['proposal'];i=next(x for x in p['items'] if x['field_path']=='department');request=body(p,i)
+    assert decide(client,p,i,request).status_code==200
+    with factory() as db:
+        db.get(m.Document,doc['id']).expires_at=service.now()-timedelta(seconds=1);db.commit()
+    replay=decide(client,p,i,request).json()
+    assert replay['replayed'] and replay['proposal']['status']=='expired'
+    assert all(not item['evidence'] and item['current_value'] is None and item['proposed_value'] is None for item in replay['proposal']['items'])
+    with factory() as db:assert db.get(m.Document,doc['id']).text is None
+
+
+def test_concurrent_duplicate_upload_creates_one_review(review):
+    from concurrent.futures import ThreadPoolExecutor
+    _,factory,ids=review
+    def upload():
+        with factory() as db:
+            return service.store(db,db.get(models.Student,ids[0]),SOURCE,'synthetic.txt','text/plain',len(SOURCE),True).id
+    with ThreadPoolExecutor(max_workers=2) as pool: result=list(pool.map(lambda _:upload(),range(2)))
+    assert result[0]==result[1]
+    with factory() as db:assert len(db.scalars(select(m.Document)).all())==1
+
+
+def test_deterministic_extraction_preserves_existing_negation_and_alias_policy():
+    source='Resume\nSKILLS\nPython\nPROJECTS\nI have no experience with Docker.\nI want to learn SQL.\nReference https://example.org/Java\nUnrelated JS abbreviation outside a skills section.'
+    result=service.deterministic(source,'resume')
+    names={fact.value.name for fact in result.facts if fact.field=='skills'}
+    assert names=={'Python'}
+    forged=s.DocumentFact(id='fact-forged',field='skills',value={'name':'Docker'},evidence=[{'excerpt':'I have no experience with Docker.'}])
+    assert not service.verified(source,'resume',forged)

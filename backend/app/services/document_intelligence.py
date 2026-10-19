@@ -15,6 +15,7 @@ from app import document_models as m
 from app.config import get_settings
 from app.services.analysis import get_profile
 from app.services.intelligence import known_skill_terms, normalize_skill
+from app.services.resume_enhancer import claims
 
 SCALARS = {'name', 'department', 'program', 'specialization', 'semester', 'graduation_year'}
 WARNINGS = ['Text extraction is not credential or issuer verification; OCR is unavailable.',
@@ -84,17 +85,16 @@ def deterministic(source, kind):
                 if match:
                     facts.append(s.DocumentFact(id=f'fact-{len(facts)}', field=field,
                         value=s.DocumentScalar(value=match[1]), evidence=[s.SourceExcerpt(excerpt=line)]))
-            found = set()
-            for term, (canonical, _) in known_skill_terms().items():
-                if canonical not in found and re.search(r'(?<![\w])' + re.escape(term) + r'(?![\w])', line, re.I):
-                    found.add(canonical)
-                    facts.append(s.DocumentFact(id=f'fact-{len(facts)}', field='skills',
-                        value=s.DocumentSkill(name=canonical), evidence=[s.SourceExcerpt(excerpt=line)]))
             for label, field in [('project', 'projects'), ('experience', 'experience'), ('certification', 'certifications')]:
                 match = re.fullmatch(label + r'\s*:\s*(.{1,500})', line, re.I)
                 if match:
                     facts.append(s.DocumentFact(id=f'fact-{len(facts)}', field=field,
                         value=s.DocumentScalar(value=match[1]), evidence=[s.SourceExcerpt(excerpt=line)]))
+        if kind != 'transcript':
+            # Reuse existing section/alias/negation policy, never infer possession from goals or URLs.
+            for canonical, claim in claims(source, 'document_intelligence').items():
+                facts.append(s.DocumentFact(id=f'fact-{len(facts)}', field='skills', value=s.DocumentSkill(name=canonical),
+                    evidence=[s.SourceExcerpt(excerpt=claim.excerpt)]))
     return s.DocumentExtractionResult(document_type=kind,
         classification=s.DocumentClassification(status='uncertain' if kind == 'unknown' else 'classified',
             confidence=0.5, rationale='Conservative text marker classification; student can correct type.'),
@@ -104,6 +104,7 @@ def deterministic(source, kind):
 def verified(source, kind, fact):
     if kind in {'unknown', 'transcript'}:
         return False
+    raw_source = source
     source = normalized(source)
     excerpts = [normalized(e.excerpt) for e in fact.evidence]
     # Page numbers are unavailable in the shared flattened parser. Never assert an unverified page.
@@ -114,6 +115,10 @@ def verified(source, kind, fact):
     value = fact.value.name if isinstance(fact.value, s.DocumentSkill) else fact.value.value
     if fact.field == 'skills':
         canonical, _ = normalize_skill(value)
+        proof = claims(raw_source, 'document_intelligence').get(canonical)
+        if not proof: return False
+        cited = [re.sub(r'^(?:technical skills|soft skills|skills):\s*', '', e) for e in excerpts]
+        if normalized(proof.excerpt) not in [*excerpts, *cited]: return False
         terms = [term for term, pair in known_skill_terms().items() if pair[0] == canonical]
         return bool(terms) and any(re.search(r'(?<!\w)' + re.escape(term) + r'(?!\w)', e, re.I)
                                    for term in terms for e in excerpts)
@@ -186,7 +191,7 @@ def build(db, student, document, result, engine='deterministic', status='availab
         db.add(m.ProposalItem(proposal_id=proposal.id, field_path=fact.field,
             operation='update' if comparison == 'conflict' else ('add' if fact.field in SCALARS and existing is None else 'attach_evidence'),
             current_value_json=existing, proposed_value_json=value,
-            evidence_json=[e.model_dump() for e in fact.evidence], comparison_status=comparison))
+            evidence_json=[e.model_copy(update={'section': None}).model_dump() for e in fact.evidence], comparison_status=comparison))
     db.flush()
     return proposal
 
@@ -205,13 +210,14 @@ def purge(db, document, status):
             item.version += 1
 
 
-def purge_expired(db):
+def purge_expired(db, *, commit=True):
     for doc in db.scalars(select(m.Document).where(m.Document.status == 'active', m.Document.expires_at <= now())):
         purge(db, doc, 'expired')
     db.execute(delete(m.AiCache).where(m.AiCache.expires_at <= now()))
     db.execute(delete(m.AiWindow).where(m.AiWindow.expires_at <= now()))
     db.execute(delete(m.AiDiagnostic).where(m.AiDiagnostic.created_at < now() - timedelta(days=1)))
-    db.commit()
+    if commit: db.commit()
+    else: db.flush()
 
 
 def active(db, document):
@@ -234,6 +240,7 @@ def get_proposal(db, student, proposal_id):
 
 def proposal_out(db, proposal):
     return s.DocumentProposalOut(id=proposal.id, document_id=proposal.document_id, status=proposal.status,
+        extraction_id=proposal.extraction_id,
         version=proposal.version, refresh_recommended=any(i.decision == 'applied' for i in items(db, proposal)),
         items=[s.DocumentItemOut(id=i.id, field_path=i.field_path, operation=i.operation,
             current_value=i.current_value_json, proposed_value=i.proposed_value_json, evidence=i.evidence_json or [],
@@ -244,16 +251,25 @@ def proposal_out(db, proposal):
 def document_out(db, document):
     proposal = db.scalar(select(m.Proposal).where(m.Proposal.document_id == document.id).order_by(m.Proposal.id.desc()))
     extraction = db.scalar(select(m.Extraction).where(m.Extraction.document_id == document.id).order_by(m.Extraction.id.desc()))
+    proposed_extraction = db.get(m.Extraction, proposal.extraction_id) if proposal else None
+    retained = (proposed_extraction.result_json or {}) if proposed_extraction else {}
+    suggestions = [s.DocumentSuggestion.model_validate(item) for item in retained.get('suggestions', [])
+        if document.text and all(normalized(document.text).count(normalized(e['excerpt'])) == 1 for e in item['evidence'])]
     return s.DocumentOut(id=document.id, filename=document.filename, document_type=document.document_type,
         classification_status=document.classification_status, status=document.status, expires_at=document.expires_at,
         proposal=proposal_out(db, proposal) if proposal else None,
-        extraction_status=extraction.status if extraction else 'not_requested', warnings=WARNINGS)
+        extraction_status=extraction.status if extraction else 'not_requested', warnings=WARNINGS,
+        withheld_count=max(0, len(retained.get('facts', [])) - len(items(db, proposal))) if proposal else 0,
+        suggestions=suggestions)
 
 
 def store(db, student, source, filename, mime, size, consent):
     configured()
     if not consent: fail('STORAGE_CONSENT_REQUIRED', 422)
-    purge_expired(db)
+    student_id = student.id
+    db.rollback(); db.execute(sql_text('BEGIN IMMEDIATE'))
+    student = db.get(models.Student, student_id); db.refresh(student)
+    purge_expired(db, commit=False)
     digest = commitment(student.id, ['document-text-v1', normalized(source)])
     old = db.scalar(select(m.Document).where(m.Document.student_pk == student.id, m.Document.duplicate_fingerprint == digest,
                                            m.Document.status == 'active'))
@@ -286,6 +302,9 @@ def decide(db, student_id, account_id, proposal_id, item_id, body):
         audit = db.scalar(select(m.Audit).where(m.Audit.actor_account_id == account_id, m.Audit.idempotency_key == body.idempotency_key))
         if audit:
             if audit.request_commitment != request_digest: fail('IDEMPOTENCY_KEY_REUSED')
+            document = get_document(db, student, proposal.document_id)
+            if document.status == 'active' and document.expires_at <= now():
+                purge(db, document, 'expired'); db.commit()
             return {'proposal': proposal_out(db, proposal), 'profile': get_profile(db, student), 'replayed': True}
         document = get_document(db, student, proposal.document_id); active(db, document)
         item = db.scalar(select(m.ProposalItem).where(m.ProposalItem.id == item_id, m.ProposalItem.proposal_id == proposal.id))

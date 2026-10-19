@@ -2,16 +2,18 @@
 
 ## Checkpoint (2026-10-19)
 
+Current state: Batches 2-6 implemented, all automated acceptance checks passed. Manual browser/device/provider and deployment policy gates remain open. See the final report and the final checkpoint below.
+
 Branch: `chore/simplify-journey-page`. Starting head: `7587107`.
 Clean clone verified before edits. The six requested documents and finalized DIL approval/implementation documents were read.
 The current user request authorizes implementation and safe automatic progression; its batch numbering takes precedence over the older plan.
 
-## Batch 1 â€” preserved and verified
+## Batch 1 - preserved and verified
 
 Existing gateway/adapters were reused, not recreated. Original targeted tests: **59 passed**.
 Existing backend baseline: **183 passed**. No real provider requests.
 
-## Batch 2 â€” Document Intelligence implementation and automated acceptance passed
+## Batch 2 - Document Intelligence implementation and automated acceptance passed
 
 - Shared bounded PDF/DOCX/TXT parser; conservative classifier and deterministic extraction.
 - Separate preview without storage; feature-gated 30-day private review storage, no binary retention.
@@ -30,7 +32,7 @@ Migration test used only a populated synthetic SQLite copy, checked every pre-ex
 
 Browser/device accessibility and real Gemini capabilities remain unverified; these are release acceptance gates, not claimed successes.
 
-## Deployment gate â€” unresolved policies
+## Deployment gate - unresolved policies
 
 `DOCUMENT_REVIEW_ENABLED` defaults false. Enabling real review storage requires approval of audit retention/access, provider consent copy, HMAC key rotation/ownership, backup controls and incident response listed in `DOCUMENT_INTELLIGENCE_FINAL_APPROVAL.md`.
 `DOCUMENT_HMAC_KEY` must be a separately managed server secret of at least 32 characters. No production database has been opened or migrated. Only additive migrations are implemented; destructive downgrade is refused.
@@ -40,7 +42,7 @@ Browser/device accessibility and real Gemini capabilities remain unverified; the
 3. **Implemented / automated acceptance passed:** career readiness explanations and roadmap context.
 4. **Implemented / automated acceptance passed:** Career assets shared gateway integration, including LinkedIn.
 5. **Implemented / automated acceptance passed:** Genuine retrieved listing requirement/match explanations.
-6. Final integration/regression and final report.
+6. **Implemented / automated acceptance passed:** Final integration/regression and final report. Manual release acceptance remains open.
 
 ## Next executable action
 
@@ -83,3 +85,21 @@ Next: Batch 5, genuine retrieved-listing requirements and match explanations wit
 Verification: full backend **224 passed**, including real-listing gate, fixture/fallback rejection, ungrounded requirement rejection, ownership, score stability and listing-version invalidation; frontend **21 passed**; TypeScript, Expo lint and web export passed (11 routes, `.expo/export-batch5`). Tests simulate retrieval with synthetic records; no live provider/search quota was used.
 
 Next: Batch 6, final adversarial/lifecycle integration checks, release runbook, final regression and report.
+
+## Batch 6 - final checkpoint
+
+Implemented final source-lifecycle hardening: expired approval replay purges before response, duplicate uploads serialize to one review, DIL reuses existing conservative skill claims (including negation/learning-goal/alias/URL exclusions), provider safety blocks are honored even with text, stale explanations expose no old source context, and prompt changes invalidate explanation caches. Review output includes extraction provenance, withheld counts and non-actionable suggestions. Existing roadmap narrative now rejects unsupported learner/academic claims and unrelated dictionary skills while preserving its response contract.
+
+Final verification: **232 backend tests passed**, **21 frontend tests passed**, **TypeScript passed**, **Expo lint passed**, **Expo web export passed** (11 routes, `.expo/export-release-check`), and `git diff --check` passed. The populated synthetic SQLite migration test preserved complete records in every pre-existing table, including saved resume revisions, LinkedIn text and completed roadmap progress, and passed integrity/foreign-key/repeat-upgrade checks. Mobile source/export scans found no provider-key names or Google key patterns.
+
+No production data was accessed. Automated provider responses were mocked. Real browser/device/provider behavior remains unverified and is explicitly a release acceptance gate. Dependency audit: 30 pre-existing findings (18 high, 12 moderate); manifests were not changed.
+
+## Current delivery state
+
+Batches 2-6 are implemented with passing automated acceptance. Batch 1 is preserved. Browser/device acceptance and real-provider capability verification are not claimed complete. New features remain disabled by default pending the unresolved deployment privacy/retention/consent/HMAC/backup/incident-response approvals and retention-scheduler configuration.
+
+See `GEMINI_INTEGRATION_FINAL_REPORT.md` for the complete implementation, API, migration, tests, file inventory, limitations and release blockers; see `GEMINI_DEPLOYMENT_RUNBOOK.md` before any deployment operation.
+
+## Next release action
+
+Resolve the documented deployment policies, perform synthetic browser/device acceptance and an explicitly authorized minimal provider smoke check, then follow the backup-first migration runbook. Do not migrate or enable features against real records until those approvals are resolved.

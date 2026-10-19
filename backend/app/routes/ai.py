@@ -55,8 +55,10 @@ def readiness(analysis_id: int, body: s.AiExplainIn, db: Session = Depends(get_d
     student = db.get(models.Student, owner_id)
     _, _, latest, _ = readiness_context(db, student, analysis_id)
     if latest != context:
-        result.status = 'stale'; result.insights = []; result.message = 'Your profile changed. Reload the analysis and request an explanation again.'
-    result.recommendations = recommendations
+        result.status = 'stale'; result.insights = []; result.sources = []
+        result.message = 'Your profile changed. Reload the analysis and request an explanation again.'
+    else:
+        result.recommendations = recommendations
     return result
 
 

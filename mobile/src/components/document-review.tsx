@@ -6,6 +6,7 @@ import { Action, Card, Details, ui } from '@/components/career-ui';
 import { Check, Confirm, Field, pickResume } from '@/components/workspace-controls';
 import { releasePickedResume } from '@/utils/picked-resume';
 import { decisionKey, decisionRequest, documentValue } from '@/utils/document-review';
+import { createLatestRequestGate } from '@/utils/latest-request';
 import type { DocumentDecisionIn, DocumentExtractionResult, DocumentItemOut, DocumentOut, DocumentProposalOut, DocumentType, ProfileOut } from '@/types/contracts';
 
 const kinds: DocumentType[] = ['resume', 'certificate', 'transcript', 'project_report', 'internship_document', 'unknown'];
@@ -52,6 +53,7 @@ export default function DocumentReview({ onApplied }: { onApplied: (profile: Pro
   const [deleting, setDeleting] = useState(false);
   const asset = useRef<DocumentPickerAsset | null>(null); const alive = useRef(true); const lock = useRef(false);
   const heading = useRef<View>(null); const revision = useRef(session.getRevision());
+  const requests = useRef(createLatestRequestGate());
   const current = () => alive.current && revision.current === session.getRevision();
   async function perform(action: () => Promise<void>) {
     if (lock.current) return;
@@ -60,23 +62,25 @@ export default function DocumentReview({ onApplied }: { onApplied: (profile: Pro
     finally { lock.current = false; if (current()) { setBusy(false); (heading.current as unknown as { focus?: () => void })?.focus?.(); } }
   }
   async function reload() {
-    const capability = await documentsApi.capabilities(); if (!current()) return;
+    const token = requests.current.begin();
+    const capability = await documentsApi.capabilities(); if (!current() || !requests.current.isCurrent(token)) return;
     setEnabled(capability.review_enabled); setLoaded(true);
     if (capability.review_enabled) {
-      const next = await documentsApi.list(); if (!current()) return;
+      const next = await documentsApi.list(); if (!current() || !requests.current.isCurrent(token)) return;
       setDocuments(next); setSelected(value => value ? next.find(x => x.id === value.id) ?? null : null);
     }
   }
   useEffect(() => {
     alive.current = true;
+    const token = requests.current.begin();
     void documentsApi.capabilities().then(async capability => {
-      if (!current()) return;
+      if (!current() || !requests.current.isCurrent(token)) return;
       setEnabled(capability.review_enabled); setLoaded(true);
-      if (capability.review_enabled) { const next = await documentsApi.list(); if (current()) setDocuments(next); }
+      if (capability.review_enabled) { const next = await documentsApi.list(); if (current() && requests.current.isCurrent(token)) setDocuments(next); }
     }).catch(e => { if (current()) setError(e instanceof Error ? e.message : 'Could not load reviews.'); });
     return () => { alive.current = false; if (asset.current) releasePickedResume(asset.current); };
   }, []);
-  function update(document: DocumentOut) { if (!current()) return; setSelected(document); setDocuments(old => [document, ...old.filter(d => d.id !== document.id)]); setAi(false); }
+  function update(document: DocumentOut) { if (!current()) return; requests.current.begin(); setSelected(document); setDocuments(old => [document, ...old.filter(d => d.id !== document.id)]); setAi(false); }
   async function upload() {
     const picked = await pickResume(); if (!picked) return;
     if (asset.current) releasePickedResume(asset.current);
@@ -106,7 +110,10 @@ export default function DocumentReview({ onApplied }: { onApplied: (profile: Pro
     <View style={ui.row}>{documents.map(doc => <Action key={doc.id} secondary disabled={busy} onPress={() => { setSelected(doc); setAi(false); }}>{doc.filename ?? `Review ${doc.id}`} · {doc.status}</Action>)}</View>
     {selected && <View style={ui.divider}><Text style={ui.heading}>{selected.filename ?? 'Purged review'}</Text><Text style={ui.muted}>{selected.document_type.replaceAll('_', ' ')} · {selected.classification_status} · {selected.status} · expires {new Date(selected.expires_at + (selected.expires_at.endsWith('Z') ? '' : 'Z')).toLocaleString()}</Text>
       {selected.warnings.map(w => <Text key={w} style={ui.muted}>{w}</Text>)}
+      {!!selected.withheld_count && <Text style={ui.muted}>{selected.withheld_count} findings were withheld or deduplicated. They cannot update your profile.</Text>}
+      {!!selected.suggestions.length && <Details label="Suggestions, not facts (cannot be approved)">{selected.suggestions.map(suggestion => <View key={suggestion.id}><Text style={ui.body}>{documentValue(suggestion.value)}: {suggestion.reason}</Text><Text style={ui.muted}>Inferred suggestion only. Supply explicit evidence before adding any fact.</Text></View>)}</Details>}
       {selected.status === 'active' && proposal && <>
+        <Text style={ui.muted}>Provenance: document {proposal.document_id} · extraction {proposal.extraction_id} · proposal {proposal.id}</Text>
         <Details label="Correct document type (before approval)"><View style={ui.row}>{kinds.map(kind => <Action key={kind} secondary disabled={busy || proposal.items.some(i => i.decision === 'applied')} onPress={() => void perform(async () => update(await documentsApi.type(selected.id, kind, proposal.version)))}>{kind.replaceAll('_', ' ')}</Action>)}</View></Details>
         <Check label="Send bounded, redacted document text to Google Gemini for optional extraction. Redaction is best effort and does not make text anonymous." checked={ai} onChange={setAi} disabled={busy} />
         <Action secondary disabled={busy || !ai} onPress={() => void perform(async () => { const doc = await documentsApi.extract(selected.id, proposal.version, ai); update(doc); setMessage(`Gemini extraction: ${doc.extraction_status}. Review proposals individually.`); })}>Extract with Gemini</Action>

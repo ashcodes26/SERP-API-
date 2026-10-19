@@ -46,7 +46,10 @@ def request(engine, owner, task, payload, cfg, schema, system, tokens):
     try:
         response = gateway.generate_structured(payload, cfg, schema, system,
             cfg.gemini_timeout_seconds, tokens, task_id=task)
-        if not getattr(response, 'text', None):
+        blocked = getattr(getattr(response, 'prompt_feedback', None), 'block_reason', None)
+        candidates = getattr(response, 'candidates', None) or []
+        finish = str(getattr(candidates[0], 'finish_reason', '')).split('.')[-1] if candidates else ''
+        if blocked or finish in {'SAFETY', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'RECITATION', 'SPII'} or not getattr(response, 'text', None):
             diagnostic(engine, task, 'blocked')
             return None
         return response

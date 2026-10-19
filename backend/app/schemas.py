@@ -123,6 +123,7 @@ class DocumentItemOut(DocumentStrict):
 class DocumentProposalOut(DocumentStrict):
     id: int
     document_id: int
+    extraction_id: int
     status: str
     version: int
     items: list[DocumentItemOut]
@@ -139,6 +140,8 @@ class DocumentOut(DocumentStrict):
     proposal: DocumentProposalOut | None = None
     extraction_status: str = 'not_requested'
     warnings: list[str] = Field(default_factory=list)
+    withheld_count: int = 0
+    suggestions: list[DocumentSuggestion] = Field(default_factory=list)
 
 
 class AiExplainIn(DocumentStrict):
@@ -1285,3 +1288,9 @@ class BatchGapOut(BaseModel):
     skills: list[BatchSkillOut]
     source: str
     disclaimer: str = READINESS_DISCLAIMER
+
+
+class DocumentDecisionOut(DocumentStrict):
+    proposal: DocumentProposalOut
+    profile: ProfileOut
+    replayed: bool

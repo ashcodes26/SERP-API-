@@ -192,3 +192,20 @@ def test_opportunity_rejects_model_requirement_and_unrelated_analysis(review,mon
     assert result['status']=='invalid_output' and not result['insights']
     app.dependency_overrides[current_principal]=lambda:Principal('student',ids[1])
     assert client.post(f'/api/ai/opportunities/{job_id}/analysis/{analysis_id}',json={'ai_consent':True}).status_code==404
+
+
+def test_blocked_provider_content_is_never_used_even_with_valid_json(review,monkeypatch):
+    client,factory,ids=review;analysis_id,skill_id=role(factory,ids)
+    blocked=response(f'gap:{skill_id}')
+    blocked.prompt_feedback=SimpleNamespace(block_reason='SAFETY')
+    monkeypatch.setattr(ai_gateway,'generate_structured',lambda *args,**kwargs:blocked)
+    result=client.post(f'/api/ai/readiness/{analysis_id}',json={'ai_consent':True}).json()
+    assert result['status']=='blocked' and not result['insights']
+
+
+def test_new_ai_stays_disabled_until_deployment_approval(review,monkeypatch):
+    client,factory,ids=review;analysis_id,_=role(factory,ids)
+    monkeypatch.setenv('GROUNDED_AI_ENABLED','false');get_settings.cache_clear()
+    assert client.post(f'/api/ai/readiness/{analysis_id}',json={'ai_consent':True}).json()['status']=='unavailable'
+    with factory() as db:
+        assert not db.scalar(select(m.AiWindow)) and not db.scalar(select(m.AiCache))

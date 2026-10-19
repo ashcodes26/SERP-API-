@@ -59,3 +59,9 @@ def test_roadmap_route_enforces_analysis_ownership(workspace, monkeypatch):
     app.dependency_overrides[current_principal] = lambda: Principal('student', ids[1])
     denied = client.post(f'/api/roadmap/{ids[0]}/analysis/{analysis_id}/ai', json=body)
     assert denied.status_code == 403
+
+
+@pytest.mark.parametrize('text', ['You have advanced Python experience.', 'Your GPA is 9.9.', 'Practice Docker deployment.'])
+def test_roadmap_withholds_learner_claims_and_unrelated_skill_advice(monkeypatch,text):
+    monkeypatch.setattr(gemini_roadmap,'request_structured',lambda *args:SimpleNamespace(text=json.dumps({'summary':text,'phases':[{'title':'Practice','actions':['Complete SQL practice.']}]})))
+    assert gemini_roadmap.generate(report(),'Synthetic learner goals only.',True,cfg()).status=='invalid_output'

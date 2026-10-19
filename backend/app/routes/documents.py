@@ -124,7 +124,7 @@ def refresh(proposal_id: int, db: Session = Depends(get_db), student=Depends(own
     return service.document_out(db, document)
 
 
-@router.patch('/profile-update-proposals/{proposal_id}/items/{item_id}')
+@router.patch('/profile-update-proposals/{proposal_id}/items/{item_id}', response_model=s.DocumentDecisionOut)
 def decide(proposal_id: int, item_id: int, body: s.DocumentDecisionIn, db: Session = Depends(get_db),
            student=Depends(owner), principal: Principal = Depends(current_principal)):
     return service.decide(db, student.id, principal.account_id, proposal_id, item_id, body)
@@ -154,6 +154,7 @@ def extract(document_id: int, body: s.DocumentAiIn, db: Session = Depends(get_db
         # Merge safe deterministic facts and locally verified Gemini candidates; never replace known facts.
         combined = service.deterministic(source, kind)
         combined.facts = (combined.facts + result.facts)[:100]
+        combined.suggestions = result.suggestions
         service.build(db, student, document, combined, 'gemini', status, consent_at)
     else:
         db.add(m.Extraction(document_id=document.id, engine='gemini', model=cfg.gemini_model,

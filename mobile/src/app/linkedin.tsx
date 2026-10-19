@@ -3,6 +3,7 @@ import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { linkedinApi, session, tasksApi } from '@/api/client';
 import { LinkedInInsights } from '@/components/linkedin-insights';
+import AiExplanation from '@/components/ai-explanation';
 import { CandidateEvidence } from '@/components/candidate-evidence';
 import { CareerAssetHeader } from '@/components/career-asset-header';
 import { Action, Card, ui } from '@/components/career-ui';
@@ -127,6 +128,7 @@ export default function LinkedInScreen() {
         {!profile?.profile_text && <Text style={ui.body}>Save profile text to analyze.</Text>}
       </Card>
       {!!profile?.profile_text && <LinkedInInsights analysis={targetedAnalysis ?? profile.analysis} busy={busy} addTask={(title, description, priority) => void perform(async () => { await tasksApi.create({ title: `LinkedIn: ${title}`.slice(0, 200), description, priority }); setNotice('Profile improvement added to your roadmap to-do list in My journey.'); })} />}
+      {!!profile?.profile_text && profile.confirmed && <AiExplanation key={`linkedin:${profile.updated_at}`} path="/api/ai/linkedin" label="Explain LinkedIn improvements" notice="Sends bounded, best-effort redacted excerpts from your confirmed saved LinkedIn profile. Public lookup review and existing analysis remain available independently." />}
 
     </>}
     {confirmation && <Confirm title={confirmation.title} message={confirmation.message} busy={busy} onCancel={() => setConfirmation(null)} onConfirm={() => void perform(async () => { await confirmation.action(); setConfirmation(null); })} />}

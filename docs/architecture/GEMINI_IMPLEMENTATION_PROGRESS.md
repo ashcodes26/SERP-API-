@@ -1,4 +1,4 @@
-# Gemini AI Integration â€” Implementation Progress
+# Gemini AI Integration - Implementation Progress
 
 ## Checkpoint (2026-10-19)
 
@@ -38,7 +38,7 @@ Browser/device accessibility and real Gemini capabilities remain unverified; the
 ## Remaining batches (current request)
 
 3. **Implemented / automated acceptance passed:** career readiness explanations and roadmap context.
-4. Career assets shared gateway integration, including LinkedIn.
+4. **Implemented / automated acceptance passed:** Career assets shared gateway integration, including LinkedIn.
 5. Genuine retrieved listing requirement/match explanations.
 6. Final integration/regression and final report.
 
@@ -60,3 +60,14 @@ Begin Batch 3 against approved profile evidence and existing deterministic scori
 Verification: full backend **217 passed**; targeted document/readiness/roadmap **37 passed**; frontend **21 passed**; TypeScript and Expo lint passed; Expo web export passed to `.expo/export-batch3` (11 routes). An earlier export failed to write into the old `dist` directory (EPERM); the clean-directory rerun succeeded. Provider and manual browser/device behavior remain unverified.
 
 Next: Batch 4, preserve Resume workflows and add independently consented LinkedIn optimization through the shared gateway.
+
+## Batch 4 checkpoint
+
+- Resume uses the existing shared gateway, consent, factual rewrite validation, revision decisions and export contracts; added owner-scoped budgets without changing compatibility seams.
+- Added `/api/ai/linkedin` for confirmed saved source excerpts only, independent of deterministic LinkedIn analysis and public/OIDC lookup. Contact lines/URLs are redacted before the provider.
+- LinkedIn suggestions use validated source IDs and conditional editorial action enums; no new candidate fact, qualification or metric is accepted. Source/version changes invalidate cached results.
+- Added separate LinkedIn AI consent/status/source UI; never overwrites saved profile text, lookup review, resume revisions or student records.
+
+Verification: full backend **220 passed**; targeted assets/workspace/grounded tests **76 passed**; frontend **21 passed**; TypeScript, Expo lint and Expo web export passed (11 routes, `.expo/export-batch4`). One new budget test initially failed because its fixture mocked the gateway before quota validation; corrected the test and reran the full suite. No real provider calls.
+
+Next: Batch 5, genuine retrieved-listing requirements and match explanations with source URLs and deterministic scores preserved.

@@ -58,3 +58,37 @@ def readiness(analysis_id: int, body: s.AiExplainIn, db: Session = Depends(get_d
         result.status = 'stale'; result.insights = []; result.message = 'Your profile changed. Reload the analysis and request an explanation again.'
     result.recommendations = recommendations
     return result
+
+
+def linkedin_context(db, student):
+    from app.services.gemini_resume import redact_contacts
+    item = db.get(models.LinkedInProfile, student.id)
+    if not item or not item.profile_text: error(404, 'LINKEDIN_PROFILE_REQUIRED', 'Save your own LinkedIn text first')
+    if not item.confirmed: error(422, 'PROFILE_REVIEW_REQUIRED', 'Review and confirm the saved LinkedIn text first')
+    redacted = redact_contacts(item.profile_text)
+    # Public lookup metadata and contact headers are never used as factual profile evidence.
+    lines = list(dict.fromkeys(line.strip() for line in redacted.splitlines()
+        if 20 <= len(line.strip()) <= 600 and not line.casefold().startswith(('source:', 'profile url:', 'retrieved:'))))[:12]
+    sources = [s.AiSourceOut(id=f'linkedin:{index}', label='Confirmed supplied LinkedIn excerpt', detail=line)
+               for index, line in enumerate(lines)]
+    allowed = {source.id: ['clarify', 'document'] for source in sources}
+    # Include all saved text in versioning, but transmit no reusable document fingerprint.
+    context = {'import_method': item.import_method, 'confirmed': item.confirmed,
+               'updated_at': item.updated_at.isoformat(), 'source_version': digest(item.profile_text)}
+    return sources, allowed, context
+
+
+@router.post('/linkedin', response_model=s.AiExplanationOut)
+def linkedin(body: s.AiExplainIn, db: Session = Depends(get_db), student=Depends(owner)):
+    sources, allowed, context = linkedin_context(db, student)
+    owner_id = student.id; engine = db.bind; db.rollback()
+    result = explain(engine, owner_id, 'linkedin_optimization_v1', sources, allowed, context, body.ai_consent, get_settings())
+    student = db.get(models.Student, owner_id)
+    try:
+        _, _, latest = linkedin_context(db, student)
+    except Exception:
+        latest = None
+    if latest != context:
+        result.status = 'stale'; result.insights = []; result.sources = []
+        result.message = 'Your saved LinkedIn source changed. Reload before another request.'
+    return result

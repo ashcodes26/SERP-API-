@@ -28,7 +28,7 @@ TEMPLATES = {
 
 def explain(engine, owner, task, sources, allowed, context, consent, cfg):
     schema = provider_schema(s.AiSelections)
-    payload = {'sources': [source.model_dump() for source in sources], 'allowed_actions': allowed, 'context': context}
+    payload = {'sources': [source.model_dump(exclude={'source_url'}) for source in sources], 'allowed_actions': allowed, 'context': context}
     key = ai_runtime.cache_key(owner, task, payload, cfg, schema)
     def out(status, cache_hit=False, plan=None):
         return s.AiExplanationOut(status=status, message={

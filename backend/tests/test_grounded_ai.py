@@ -11,6 +11,7 @@ from app.main import app
 from app.services import ai_gateway, ai_runtime, grounded_ai
 from app.services.analysis import analyze
 from test_document_intelligence import review  # noqa: F401
+REAL_GENERATE = ai_gateway.generate_structured
 
 
 def role(factory, ids):
@@ -102,3 +103,45 @@ def test_profile_changes_during_provider_call_hide_stale_result(review, monkeypa
     monkeypatch.setattr(ai_gateway,'generate_structured',generate)
     result=client.post(f'/api/ai/readiness/{analysis_id}',json={'ai_consent':True}).json()
     assert result['status']=='stale' and not result['insights']
+
+
+def test_linkedin_requires_confirmed_saved_source_redacts_and_preserves_lookup(review, monkeypatch):
+    client, factory, ids = review
+    source='Name: Alex Synthetic\nEmail: synthetic@example.org\nAbout: Built a Python college project for data cleaning.\nExperience: Contributed to a SQL practice report.'
+    with factory() as db:
+        db.add(models.LinkedInProfile(student_pk=ids[0],profile_text=source,profile_url='https://www.linkedin.com/in/synthetic/',import_method='public_search_reviewed',confirmed=False));db.commit()
+    assert client.post('/api/ai/linkedin',json={'ai_consent':True}).status_code==422
+    with factory() as db: db.get(models.LinkedInProfile,ids[0]).confirmed=True;db.commit()
+    calls=[]
+    def generate(*args,**kwargs): calls.append(args[0]);return response('linkedin:0','clarify')
+    monkeypatch.setattr(ai_gateway,'generate_structured',generate)
+    first=client.post('/api/ai/linkedin',json={'ai_consent':True});assert first.status_code==200,first.text
+    assert first.json()['status']=='available'
+    assert 'synthetic@example.org' not in json.dumps(calls) and 'Alex Synthetic' not in json.dumps(calls)
+    assert client.post('/api/ai/linkedin',json={'ai_consent':True}).json()['cache_hit']
+    with factory() as db:
+        saved=db.get(models.LinkedInProfile,ids[0]);assert saved.profile_text==source and saved.import_method=='public_search_reviewed'
+        saved.profile_text+='\nProjects: Contributed to a Python exercise.';db.commit()
+    assert not client.post('/api/ai/linkedin',json={'ai_consent':True}).json()['cache_hit']
+
+
+def test_linkedin_rejects_unprovided_facts_and_cannot_be_read_by_faculty(review, monkeypatch):
+    client,factory,ids=review
+    with factory() as db:
+        db.add(models.LinkedInProfile(student_pk=ids[0],profile_text='About: Contributed to a Python college project.',confirmed=True,import_method='pasted_summary'));db.commit()
+    monkeypatch.setattr(ai_gateway,'generate_structured',lambda *args,**kwargs:response('linkedin:0','clarify',qualification='PhD'))
+    result=client.post('/api/ai/linkedin',json={'ai_consent':True}).json()
+    assert result['status']=='invalid_output' and not result['insights']
+    app.dependency_overrides[current_principal]=lambda:Principal('admin')
+    assert client.post('/api/ai/linkedin',json={'ai_consent':True}).status_code==403
+
+
+def test_owner_scope_enforces_durable_budget_for_legacy_adapters(review, monkeypatch):
+    from app.services import gemini_resume
+    _,factory,ids=review;cfg=get_settings().model_copy(update={'gemini_task_limit_per_hour':1})
+    engine=factory.kw['bind'];ai_runtime.reserve(engine,ids[0],'resume_review_v1',cfg)
+    monkeypatch.setattr(ai_gateway, 'generate_structured', REAL_GENERATE)
+    # SDK must never run once the durable request budget is exhausted.
+    with ai_gateway.owner_scope(engine,ids[0]):
+        with pytest.raises(ai_gateway.AiRateLimited):
+            gemini_resume.request_structured({},cfg,{},'system',1,6000)

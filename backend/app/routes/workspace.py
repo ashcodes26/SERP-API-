@@ -204,7 +204,9 @@ def _resume_analyze(item_id, body, db, student):
     if not body.ai_consent:
         error(422, 'AI_CONSENT_REQUIRED', 'Review the Google data-use notice and consent before requesting Gemini analysis.')
     from app.services.gemini_resume import review
-    ai_review, suggestions = review(item.original_text, description, True)
+    from app.services.ai_gateway import owner_scope
+    with owner_scope(db.bind, student.id):
+        ai_review, suggestions = review(item.original_text, description, True)
     analysis = s.ResumeAnalysisOut(ai_review=ai_review, suggestions=suggestions,
         target_title=title, target_source=source, source_url=url)
     return change(db, item, body.version, {'target': {'job_id': body.job_id, 'title': title, 'description': description, 'source': source, 'source_url': url},

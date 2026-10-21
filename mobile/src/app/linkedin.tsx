@@ -1,6 +1,7 @@
+import { router } from 'expo-router';
+import { AdaptiveColumns, page, SectionHeading, WorkspacePage } from '@/components/screen-layout';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Linking, Text, View } from 'react-native';
 import { linkedinApi, session, tasksApi } from '@/api/client';
 import { LinkedInInsights } from '@/components/linkedin-insights';
 import AiExplanation from '@/components/ai-explanation';
@@ -77,13 +78,14 @@ export default function LinkedInScreen() {
     setNotice('Retrieved text added to the editor. Correct it, confirm it describes your own background, and save to include it in resume analysis.');
   }
   const open = (url: string) => void perform(async () => { if (!/^https:\/\//i.test(url)) throw new Error('This source URL is unavailable.'); await Linking.openURL(url); });
-  return <SafeAreaView edges={['bottom']} style={ui.screen}><ScrollView contentContainerStyle={[ui.content, { maxWidth: 1200 }]} keyboardShouldPersistTaps="handled">
+  return <WorkspacePage maxWidth={1200}>
     <CareerAssetHeader asset="linkedin" description="Improve your professional profile presentation, discoverability, and role positioning using profile content you review." steps={['Add profile evidence', 'Choose target', 'Review insights', 'Apply on LinkedIn']} currentStep={profile?.profile_text ? targetedAnalysis ? 2 : 1 : 0} />
 
     {!student ? <Card><Text style={ui.body}>Sign in with a student account to use your private LinkedIn analyzer.</Text></Card> : <>
       {busy && <View style={ui.row}><ActivityIndicator color={d.accent} /><Text style={ui.body}>Processing your request...</Text></View>}
       {!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Text style={ui.muted}>Saved profile content remains unchanged. Check the provider message, then try again or use pasted/profile-export text.</Text></Card>}
       {!!notice && <Card><Text accessibilityLiveRegion="polite" style={ui.body}>{notice}</Text></Card>}
+      <AdaptiveColumns><View style={page.column}>
       {!!profile?.profile_text && <CandidateEvidence profile={profile.extracted_profile} />}
       <Card><Text style={ui.kicker}>STEP 1 / PROFILE EVIDENCE</Text><Text style={ui.heading}>Add profile content you can verify</Text><Text style={ui.body}>{profile?.message ?? 'Paste your profile text, upload your own profile export, or optionally search a public URL.'}</Text>
         <Field label="LinkedIn profile URL (optional)" value={profileUrl} onChange={setProfileUrl} maxLength={500} disabled={busy} placeholder="https://www.linkedin.com/in/your-name/" />
@@ -127,10 +129,14 @@ export default function LinkedInScreen() {
         <Text style={ui.muted}>{profileText !== profile?.profile_text ? 'Your editor has unsaved changes. Save your profile input above to include them in analysis.' : 'Analysis uses your saved career text.'}</Text>
         {!profile?.profile_text && <Text style={ui.body}>Save profile text to analyze.</Text>}
       </Card>
-      {!!profile?.profile_text && <LinkedInInsights analysis={targetedAnalysis ?? profile.analysis} busy={busy} addTask={(title, description, priority) => void perform(async () => { await tasksApi.create({ title: `LinkedIn: ${title}`.slice(0, 200), description, priority }); setNotice('Profile improvement added to your roadmap to-do list in My journey.'); })} />}
+      </View><View style={page.column}>
+      {!profile?.profile_text && <Card><SectionHeading title="Your profile insights" description="Save your own profile text to see deterministic recommendations here. Suggestions are drafts for you to review, and nothing is published to LinkedIn automatically." /></Card>}
+      {!!profile?.profile_text && <LinkedInInsights analysis={targetedAnalysis ?? profile.analysis} busy={busy} addTask={(title, description, priority) => void perform(async () => { await tasksApi.create({ title: `LinkedIn: ${title}`.slice(0, 200), description, priority }); setNotice('Profile improvement added to your roadmap to-do list in My Career Plan.'); })} />}
       {!!profile?.profile_text && profile.confirmed && <AiExplanation key={`linkedin:${profile.updated_at}`} path="/api/ai/linkedin" label="Explain LinkedIn improvements" notice="Sends bounded, best-effort redacted excerpts from your confirmed saved LinkedIn profile. Public lookup review and existing analysis remain available independently." />}
 
+      <Action secondary onPress={() => router.push({ pathname: '/', params: { view: 'tasks' } })}>Open personal learning tasks</Action>
+      </View></AdaptiveColumns>
     </>}
     {confirmation && <Confirm title={confirmation.title} message={confirmation.message} busy={busy} onCancel={() => setConfirmation(null)} onConfirm={() => void perform(async () => { await confirmation.action(); setConfirmation(null); })} />}
-  </ScrollView></SafeAreaView>;
+  </WorkspacePage>;
 }

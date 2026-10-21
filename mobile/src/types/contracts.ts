@@ -257,3 +257,12 @@ export interface RoadmapTaskIn { title: string; description?: string; priority?:
 export interface RoadmapTaskPatch extends Partial<RoadmapTaskIn> { version: number; status?: RoadmapStatus }
 export interface RoadmapTaskOut { id: number; title: string; description: string; status: RoadmapStatus; priority: Priority; due_date: string | null; roadmap_milestone_id: number | null; skill_id: number | null; created_at: string; updated_at: string; completed_at: string | null; version: number }
 export interface TaskListOut { tasks: RoadmapTaskOut[]; total: number; completed: number; remaining: number; completion_percentage: number | null; milestone_counts: Record<string, { total: number; completed: number }> }
+
+export type StudentDemoSection = 'journey' | 'resume' | 'linkedin' | 'jobs' | 'market' | 'placement';
+export interface StudentDemoOut {
+  provenance: 'demo_fixture';
+  section: StudentDemoSection;
+  title: string;
+  metrics: { label: string; value: string | number }[];
+  records: { title: string; fields: Record<string, string> }[];
+}

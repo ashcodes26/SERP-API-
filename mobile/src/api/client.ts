@@ -164,6 +164,7 @@ export const marketApi = {
   },
 };
 export const careerApi = {
+  demo: (section: import('@/types/contracts').StudentDemoSection) => request<import('@/types/contracts').StudentDemoOut>(`/api/student/demo?section=${section}`),
   journey: () => request<{ student_id: number; job_id: number; synthetic: boolean }>('/api/placement/journey'),
   previewInput: (asset: DocumentPickerAsset) => request<import('@/types/contracts').JourneyPreviewOut>('/api/journey/input/preview', { method: 'POST', body: fileForm(asset, {}) }),
   saveInput: (body: import('@/types/contracts').JourneySaveIn) => jsonPost<ProfileOut>('/api/journey/input/save', body),

@@ -1302,3 +1302,24 @@ class DocumentDecisionOut(DocumentStrict):
     proposal: DocumentProposalOut
     profile: ProfileOut
     replayed: bool
+
+
+StudentDemoSection = Literal['journey', 'resume', 'linkedin', 'jobs', 'market', 'placement']
+
+
+class StudentDemoMetricOut(BaseModel):
+    label: str
+    value: str | int
+
+
+class StudentDemoRecordOut(BaseModel):
+    title: str
+    fields: dict[str, str]
+
+
+class StudentDemoOut(BaseModel):
+    provenance: Literal['demo_fixture'] = 'demo_fixture'
+    section: StudentDemoSection
+    title: str
+    metrics: list[StudentDemoMetricOut]
+    records: list[StudentDemoRecordOut]

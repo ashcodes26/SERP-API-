@@ -12,7 +12,7 @@
 
 html, body { background: var(--color-void); color: var(--color-mist); color-scheme: dark; }
 body { font-feature-settings: 'cv01' on, 'ss03' on, 'zero' on; }
-*:focus-visible { outline: 2px solid var(--color-electric-iris); outline-offset: 4px; }
+*:focus-visible { outline: var(--sizes-focusWidth) solid var(--color-electric-iris); outline-offset: var(--sizes-focusOffset); }
 @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 
 /* Keep static web output responsive before React hydrates. */

@@ -1,0 +1,31 @@
+{
+  "colors": {
+    "void": "#000000", "carbon": "#000000", "obsidian": "#0d0d0f",
+    "higher": "#16161a", "overlay": "#1e1e24", "scrim": "#000000bb",
+    "graphite": "#202023", "smoke": "#363639", "paper": "#ffffff",
+    "mist": "#bdbdbd", "fog": "#9a9a9a", "disabled": "#606066",
+    "electric-iris": "#8052ff", "accent-hover": "#7445ed", "accent-pressed": "#6c3ee8",
+    "saffron": "#ffb829", "verdant": "#15846e", "success-text": "#55c98b",
+    "coral-red": "#eb5757", "info": "#3b82f6", "replacement": "#ffff00"
+  },
+  "spacing": { "half": 3, "one": 6, "two": 12, "medium": 16, "three": 18, "four": 24, "five": 36, "shelf": 48, "six": 60 },
+  "radii": { "control": 6, "secondary": 8, "card": 12, "dialog": 16, "pill": 24 },
+  "sizes": { "control": 48, "compactControl": 44, "focusWidth": 2, "focusOffset": 4 },
+  "breakpoints": { "tablet": 768, "desktop": 900, "wideShell": 1200 },
+  "layout": { "auth": 420, "resume": 800, "import": 880, "career": 960, "opportunities": 1200, "workspace": 1280 },
+  "typography": {
+    "hero": { "fontSize": 78, "lineHeight": 86, "fontWeight": "600" },
+    "heroMobile": { "fontSize": 42, "lineHeight": 46, "fontWeight": "600" },
+    "title": { "fontSize": 42, "lineHeight": 50, "fontWeight": "600", "letterSpacing": -1 },
+    "titleMobile": { "fontSize": 28, "lineHeight": 34, "fontWeight": "600" },
+    "stage": { "fontSize": 34, "lineHeight": 40, "fontWeight": "600" },
+    "heading": { "fontSize": 24, "lineHeight": 30, "fontWeight": "600" },
+    "subheading": { "fontSize": 20, "lineHeight": 26, "fontWeight": "600" },
+    "body": { "fontSize": 16, "lineHeight": 24, "fontWeight": "400" },
+    "compact": { "fontSize": 14, "lineHeight": 22, "fontWeight": "400" },
+    "label": { "fontSize": 12, "lineHeight": 16, "fontWeight": "500" },
+    "caption": { "fontSize": 12, "lineHeight": 20, "fontWeight": "400" },
+    "kicker": { "fontSize": 11, "lineHeight": 14, "fontWeight": "600", "letterSpacing": 2 },
+    "metric": { "fontSize": 48, "lineHeight": 54, "fontWeight": "600" }
+  }
+}

@@ -8,8 +8,8 @@ import type { ApplicationOut, ApplicationStage, DriveIn, DriveOut, FacultyReview
 export function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
   return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onChange} multiline={multiline} style={ui.input} autoCapitalize="none" /></View>;
 }
-export function Choices<T extends string | number>({ label, values, selected, onSelect }: { label: string; values: { value: T; label: string }[]; selected: T | null; onSelect: (value: T) => void }) {
-  return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text><View style={ui.row}>{values.map(x => <Pressable key={x.value} accessibilityRole="button" accessibilityState={{ selected: selected === x.value }} onPress={() => onSelect(x.value)} style={[ui.chip, selected === x.value && ui.selected]}><Text style={ui.muted}>{x.label}</Text></Pressable>)}</View></View>;
+export function Choices<T extends string | number>({ label, values, selected, onSelect, disabled = false }: { label: string; values: { value: T; label: string }[]; selected: T | null; onSelect: (value: T) => void; disabled?: boolean }) {
+  return <View style={{ gap: 8 }}><Text style={ui.label}>{label}</Text><View style={ui.row}>{values.map(x => <Pressable key={x.value} accessibilityRole="button" accessibilityState={{ selected: selected === x.value, disabled }} disabled={disabled} onPress={() => onSelect(x.value)} style={[ui.chip, selected === x.value && ui.selected, disabled && { opacity: 0.6 }]}><Text style={ui.muted}>{x.label}</Text></Pressable>)}</View></View>;
 }
 export function ReviewCard({ review, admin = false, onUpdated }: { review: FacultyReviewOut; admin?: boolean; onUpdated: () => Promise<void> }) {
   const [feedback, setFeedback] = useState('');

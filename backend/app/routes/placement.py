@@ -27,6 +27,14 @@ def journey(db: Session = Depends(get_db), student=Depends(owner)):
     return {'student_id': student.id, 'job_id': role.id, 'synthetic': student.is_synthetic}
 
 
+@router.get('/student/demo', response_model=s.StudentDemoOut)
+def student_demo(section: s.StudentDemoSection, student=Depends(owner)):
+    if get_settings().app_env not in {'development', 'test'}:
+        p.fail(404, 'DEMO_DISABLED', 'Demo fixtures are available only in local development.')
+    from app.services.student_demo import load_demo
+    return load_demo(section)
+
+
 @router.get('/admin/cohorts', response_model=list[s.CohortOut])
 def cohorts(db: Session = Depends(get_db), principal=Depends(require_admin)):
     rows = db.scalars(select(m.Cohort).where(m.Cohort.admin_id == principal.account_id).order_by(m.Cohort.id))

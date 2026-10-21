@@ -64,6 +64,52 @@ def setup(tmp_path, monkeypatch):
     engine.dispose(); get_settings.cache_clear()
 
 
+def test_student_demo_sections_are_read_only_and_require_student_session(setup):
+    api, maker, ids, auth = setup
+    assert api.get('/api/student/demo?section=journey').status_code == 401
+    assert api.get('/api/student/demo?section=journey', headers=auth['faculty-a']).status_code == 403
+    before = api.get(f'/api/profile/{ids["student"]}', headers=auth['alice']).json()
+    for section in ['journey', 'resume', 'linkedin', 'jobs', 'market', 'placement']:
+        response = api.get(f'/api/student/demo?section={section}', headers=auth['alice'])
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result['provenance'] == 'demo_fixture' and result['section'] == section
+        assert result['records'] and result['metrics']
+        assert api.get(f'/api/student/demo?section={section}', headers=auth['bob']).json() == result
+        assert api.get(f'/api/student/demo?section={section}', headers=auth['alice']).json() == result
+    after = api.get(f'/api/profile/{ids["student"]}', headers=auth['alice']).json()
+    assert after == before
+    assert api.get('/api/resumes', headers=auth['alice']).json() == []
+    assert api.get('/api/student/demo?section=invalid', headers=auth['alice']).status_code == 422
+
+
+def test_student_demo_stats_match_fixture_records_and_unknown_is_distinct():
+    from app.services.student_demo import load_demo
+    journey = load_demo('journey')
+    metrics = {metric.label: metric.value for metric in journey.metrics}
+    assert metrics == {'Skills': 4, 'Known proficiency': 3, 'Unknown proficiency': 1}
+    assert journey.records[-1].fields['Recorded level'] == 'Unknown'
+    market = load_demo('market')
+    assert market.records[0].title == 'Python'
+    assert market.records[0].fields == {'Openings mentioning skill': '3/3', 'Share of demo sample': '100%'}
+    assert market.records[1].fields['Share of demo sample'] == '67%'
+    assert {metric.label: metric.value for metric in market.metrics} == {
+        'Sample openings': 3, 'Observed skills': 4, 'Skill mentions': 7}
+    placement = load_demo('placement')
+    assert {metric.label: metric.value for metric in placement.metrics} == {
+        'Applications': 2, 'Interviews': 1, 'Training completed': '1/2'}
+
+
+def test_student_demo_disabled_in_production(setup, monkeypatch):
+    api, _, _, auth = setup
+    monkeypatch.setenv('APP_ENV', 'production')
+    get_settings.cache_clear()
+    try:
+        assert api.get('/api/student/demo?section=journey', headers=auth['alice']).status_code == 404
+    finally:
+        get_settings.cache_clear()
+
+
 def test_accounts_server_roles_and_session_revocation(setup):
     api, maker, ids, auth = setup
     assert api.get('/api/admin/dashboard').status_code == 401  # test env has no bypass

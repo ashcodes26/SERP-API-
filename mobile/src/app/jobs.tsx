@@ -1,6 +1,6 @@
+import { AdaptiveColumns, page, WorkspacePage } from '@/components/screen-layout';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { careerApi, jobsApi, session } from '@/api/client';
 import { Action, Card, ui } from '@/components/career-ui';
@@ -47,24 +47,30 @@ export default function JobsScreen() {
   function select(id: number) { void perform(async () => { setDetail(null); setMatch(null); setRoadmap(null);   setDetail(await jobsApi.detail(id)); }); }
   function analyze() { if (!detail || !studentId) return; void perform(async () => { setMatch(null); setRoadmap(null);  setMatch(await jobsApi.match(detail.id, studentId)); }); }
   function open(url: string) { void perform(async () => { if (!/^https?:\/\//i.test(url) || !await Linking.canOpenURL(url)) throw new Error('This source link cannot be opened.'); await Linking.openURL(url); }); }
-  return <SafeAreaView edges={['bottom']} style={ui.screen}><ScrollView contentContainerStyle={[ui.content, { maxWidth: 1200 }]} keyboardShouldPersistTaps="handled">
-    <OpportunitiesHeader title="Job Search & Matching" description="Search collected openings, inspect their source, then compare a listing with your saved student evidence." />
-    <Card><Text style={ui.kicker}>SEARCH OPENINGS</Text><Text style={ui.heading}>Describe the opportunity you want</Text><Text style={ui.muted}>Results come from an external search provider. Listings, requirements, and availability can change after collection.</Text><Text style={ui.label}>Target role</Text><TextInput accessibilityLabel="Target role" editable={!busy} maxLength={120} value={role} onChangeText={setRole} style={ui.input} placeholderTextColor={d.muted} placeholder="Job title" />
-      <Text style={ui.label}>Location (optional)</Text><TextInput accessibilityLabel="Job search location" editable={!busy} maxLength={120} value={location} onChangeText={setLocation} style={ui.input} placeholderTextColor={d.muted} placeholder="City, country" />
-      <Text style={ui.label}>Keywords (optional)</Text><TextInput accessibilityLabel="Job search keywords" editable={!busy} maxLength={160} value={keywords} onChangeText={setKeywords} style={ui.input} placeholderTextColor={d.muted} placeholder="Python, graduate, remote…" />
-      <Text style={ui.label}>Add career-stage terms to the query</Text><View style={ui.row}>{([['any', 'Any stage'], ['entry_level', 'Entry level'], ['internship', 'Internship']] as const).map(([value, label]) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: value === level, disabled: busy }} disabled={busy} key={value} onPress={() => setLevel(value)} style={[ui.chip, value === level && ui.selected]}><Text style={ui.body}>{label}</Text></Pressable>)}</View>
-      <Action onPress={() => search()} disabled={busy || !role.trim()}>Search openings →</Action><Text style={ui.muted}>Opening availability is not verified by SkillUp. Confirm details on the original source before applying.</Text>
+  return <WorkspacePage maxWidth={1200}>
+    <OpportunitiesHeader section="jobs" title="Job Search & Matching" description="Search collected openings, inspect their source, then compare a listing with your saved student evidence." />
+    <View style={page.notice}><Text style={ui.label}>EXTERNAL JOB LISTINGS</Text><Text style={ui.muted}>Searches use SerpApi. Skillup does not verify opening availability or employer affiliation. Check the original posting before applying.</Text></View>
+    <Card><AdaptiveColumns>
+      <View style={page.column}><Text style={ui.label}>Target role</Text><TextInput accessibilityLabel="Target role" editable={!busy} maxLength={120} value={role} onChangeText={setRole} style={ui.input} placeholderTextColor={d.muted} placeholder="Job title" /></View>
+      <View style={page.column}><Text style={ui.label}>Location (optional)</Text><TextInput accessibilityLabel="Job search location" editable={!busy} maxLength={120} value={location} onChangeText={setLocation} style={ui.input} placeholderTextColor={d.muted} placeholder="City, country" /></View>
+      <View style={page.column}><Text style={ui.label}>Keywords (optional)</Text><TextInput accessibilityLabel="Job search keywords" editable={!busy} maxLength={160} value={keywords} onChangeText={setKeywords} style={ui.input} placeholderTextColor={d.muted} placeholder="Skills or career terms" /></View>
+    </AdaptiveColumns>
+    <View style={[ui.row, { justifyContent: 'space-between' }]}><View style={ui.row}>{([['any', 'Any stage'], ['entry_level', 'Entry level'], ['internship', 'Internship']] as const).map(([value, label]) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: value === level, disabled: busy }} disabled={busy} key={value} onPress={() => setLevel(value)} style={[ui.chip, value === level && ui.selected]}><Text style={ui.body}>{label}</Text></Pressable>)}</View><Action onPress={() => search()} disabled={busy || !role.trim()}>Search openings →</Action></View>
     </Card>
     {busy && <View style={ui.row}><ActivityIndicator color={d.accent} /><Text style={ui.muted}>Working on your request…</Text></View>}
     {!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text>{retry && <Action secondary disabled={busy} onPress={retry}>Retry request</Action>}</Card>}
+    <AdaptiveColumns><View style={[page.column, { flex: 0.85 }]}>
+    {!sample && !busy && <Card><Text style={ui.heading}>Find your next opportunity</Text><Text style={ui.body}>Search a role to see retrieved listings here. Results retain their source and collection time.</Text></Card>}
     {sample && <><StatStrip items={[{ label: "Listings", value: sample.jobs.length }, { label: "With requirements", value: sample.jobs.filter(job => job.skills.some(skill => skill.requirement_type !== "mentioned")).length }]} />
       <View style={ui.row}><Text style={ui.heading}>{sample.jobs.length} retrieved listings</Text><Text style={ui.muted}>{sample.cache_status === 'live' ? 'Live retrieval' : sample.cache_status === 'fresh_cache' ? 'Cached retrieval' : 'Older cache · live search unavailable'}</Text></View><Text style={ui.muted}>{sample.query}{sample.scope.location ? ` / ${sample.scope.location}` : ''} / Page {sample.scope.page ?? 1} / Collected {date(sample.retrieved_at)}</Text>
       {sample.warnings.map(w => <Text style={ui.muted} key={w}>{w}</Text>)}
       {sample.jobs.length === 0 && <Card><Text style={ui.heading}>No listings found.</Text><Text style={ui.body}>Try a broader role, another location, or fewer keywords.</Text></Card>}
-      {sample.jobs.map(job => <Card key={job.id}><Text style={ui.kicker}>OPENING / NOT VERIFIED ACTIVE</Text><Text style={ui.heading}>{job.title}</Text><Text style={ui.body}>{job.company ?? 'Company not supplied'} / {job.location ?? 'Location not supplied'}</Text><Text style={ui.muted}>{job.employment_type ?? 'Employment type not supplied'} / Source: {job.source_domain ?? 'Not supplied'}</Text><Text numberOfLines={2} style={ui.muted}>Observed requirements: {job.skills.slice(0, 6).map(skill => skill.name).join(" / ") || "No dictionary-supported skills"}</Text><Action secondary disabled={busy} onPress={() => select(job.id)}>Inspect requirements and match →</Action></Card>)}
+      {sample.jobs.map(job => <Card key={job.id} style={detail?.id === job.id ? { borderColor: d.accent } : undefined}><Text style={ui.kicker}>OPENING / NOT VERIFIED ACTIVE</Text><Text style={ui.heading}>{job.title}</Text><Text style={ui.body}>{job.company ?? 'Company not supplied'} / {job.location ?? 'Location not supplied'}</Text><Text style={ui.muted}>{job.employment_type ?? 'Employment type not supplied'} / Source: {job.source_domain ?? 'Not supplied'}</Text><Text numberOfLines={2} style={ui.muted}>Observed requirements: {job.skills.slice(0, 6).map(skill => skill.name).join(" / ") || "No dictionary-supported skills"}</Text><Action secondary disabled={busy} onPress={() => select(job.id)}>Inspect requirements and match →</Action></Card>)}
       {sample.next_page_token && <Action secondary disabled={busy} onPress={() => search(true)}>Next result page →</Action>}
       <Action secondary disabled={busy} onPress={() => void perform(async () => setMarket(await jobsApi.market(sample.search_id)))}>View sample skills</Action>
     </>}
+    </View><View style={[page.column, { flex: 1.3 }]}>
+    {!detail && <Card><Text style={ui.heading}>Inspect a listing</Text><Text style={ui.body}>Choose a retrieved listing to read its requirements, compare your evidence and hand it off to your resume workspace.</Text></Card>}
     {market && <Card><Text style={ui.kicker}>OBSERVED SKILLS / THIS SEARCH SAMPLE</Text><Text style={ui.heading}>{market.sample_size} unique listings</Text><Text style={ui.muted}>{market.scope.role} / {market.scope.location || 'Location not specified'} / Collected {date(market.retrieved_at)}. Counts reflect this sample only, not the full job market.</Text>{market.skills.length ? market.skills.map(skill => <View style={ui.divider} key={skill.name}><Text style={ui.body}>{skill.name} / {skill.count} listings ({pct(skill.share)})</Text><Text style={ui.muted}>Required: {skill.required_count} / Preferred: {skill.preferred_count} / Other mentions: {skill.count - skill.required_count - skill.preferred_count}</Text></View>) : <Text style={ui.body}>No dictionary-supported skills found in this sample.</Text>}{market.warnings.map(w => <Text style={ui.muted} key={w}>{w}</Text>)}</Card>}
     {detail && <Card><Text style={ui.kicker}>SELECTED LISTING / NOT VERIFIED ACTIVE</Text><Text style={ui.heading}>{detail.title}</Text><Text style={ui.body}>{detail.company ?? 'Company not supplied'} / {detail.location ?? 'Location not supplied'}</Text><Text style={ui.muted}>Retrieved {date(detail.retrieved_at)} / Source: {detail.source_domain ?? 'Unavailable'}</Text>
       {detail.source_url && <Action secondary disabled={busy} onPress={() => open(detail.source_url!)}>Open original source to verify and apply ↗</Action>}
@@ -84,11 +90,12 @@ export default function JobsScreen() {
         {match.analysis.gaps.map(g => <View style={ui.divider} key={g.skill.id}><Text style={ui.body}>{g.skill.canonical_name} / {g.priority} priority</Text><Text style={ui.muted}>Current: {g.current_level ?? 'Unknown'} / Required: {g.required_level ?? 'Unknown'} / {g.rationale}</Text></View>)}
         {match.explanation.map((w, i) => <Text style={ui.muted} key={i}>{w}</Text>)}<Text style={ui.muted}>{match.analysis.readiness.disclaimer}</Text>
         <Action disabled={busy} onPress={() => void perform(async () => setRoadmap(await jobsApi.roadmap(match.analysis.student_id, match.analysis.id)))}>Build this role’s learning roadmap →</Action>
-        <Action secondary disabled={busy} onPress={() => { session.setTarget(match.analysis); router.push('/'); }}>Continue in My journey →</Action>
+        <Action secondary disabled={busy} onPress={() => { session.setTarget(match.analysis); router.push('/'); }}>Continue in My Career Plan →</Action>
       </Card>
       <Card><Text style={ui.heading}>Prepare your application document</Text><Text style={ui.muted}>The Resume Analyzer keeps your document, consent, and edits private. This handoff only selects the listing as its target.</Text><Action secondary disabled={busy} onPress={() => router.push({ pathname: '/resume', params: { job_id: match.listing.id } })}>Open Resume Analyzer for this listing</Action></Card>
     </>}
     {roadmap && <CareerRoadmap items={roadmap} onChange={setRoadmap} />}
+    </View></AdaptiveColumns>
 
-  </ScrollView></SafeAreaView>;
+  </WorkspacePage>;
 }

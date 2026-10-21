@@ -1,6 +1,7 @@
 # Admin demo records
 
-Each of the six admin sections has **Load demo records**. It creates or reuses
+Each of the six admin sections has a compact **Demo** button at the top right
+(accessible name: **Load demo records**). It creates or reuses
 the signed-in faculty account's `Demo fixtures - placement workspace` cohort,
 selects that cohort, clears previous search filters and student detail selection,
 and refreshes stats through the existing scoped APIs. Skill analytics also loads
@@ -10,8 +11,10 @@ summaries linking to their saved records. Reports exports the selected scope.
 The cohort contains six fictional profiles, known and unknown skill levels,
 four simulated assessment attempts, five resume reviews, six training assignments,
 six application histories and two fictional drives. Example links use example.com.
-These are fixtures, including all scores and hiring outcomes; the UI labels the
-scope **DEMO FIXTURE / SYNTHETIC DATA**. All aggregates use the existing backend
+These are fixtures, including all scores and hiring outcomes; the selected
+cohort and record names retain their demo labels. The large demo panels and
+explanatory notices were removed, while section stats remain visible.
+All aggregates use the existing backend
 calculations. No Gemini or SerpApi calls are made, and no passwords are created.
 
 `POST /api/admin/demo` requires an authenticated admin and development/test mode.

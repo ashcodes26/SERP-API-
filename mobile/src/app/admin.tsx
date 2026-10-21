@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
 import { Action, Card, Details, ui } from '@/components/career-ui';
 import { ApplicationCard, Choices, DriveEditor, Field, ReviewCard, TrainingCard } from '@/components/placement-ui';
@@ -73,7 +73,6 @@ export default function Admin() {
         setGaps(skillGaps); setDrill(null); setEditDrive(null);
         setDetail(null); setAssignee('cohort');
         router.setParams({ student: '' });
-        setMessage(demo.message);
       });
     } finally { demoLock.current = false; }
   }
@@ -99,9 +98,12 @@ export default function Admin() {
     Reports: ['assigned_students', 'assessment_attempts', 'training_completed', 'applications', 'offers'],
   };
   return <ScrollView style={ui.screen} contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
-    <Text style={ui.kicker}>FACULTY WORKSPACE / {tabToSection[tab].toUpperCase()}</Text><Text style={ui.title}>{tabCopy[tab].title}</Text><Text style={ui.muted}>{tabCopy[tab].description}</Text>
-    <Card><Text style={ui.label}>DEMO RECORDS</Text><Text style={ui.muted}>Explore this section with six fictional students, skill evidence, reviews, training and placement outcomes. Reuses a separate demo cohort; repeated clicks keep saved demo edits.</Text><Action secondary disabled={busy} onPress={() => void loadDemo()}>Load demo records</Action></Card>
-    {demoActive && <Card><Text accessibilityLiveRegion="polite" style={ui.label}>DEMO FIXTURE / SYNTHETIC DATA</Text><Text style={ui.body}>All records and outcomes in the selected demo cohort are fictional. Stats below are calculated from its saved records.</Text>{tab !== 'Overview' && dashboard && <View style={ui.row}>{demoMetrics[tab].map(key => <View key={key} style={[ui.chip, { minWidth: 150, gap: 6 }]}><Text style={ui.score}>{dashboard.metrics[key] ?? '—'}</Text><Text style={ui.body}>{key.replaceAll('_', ' ')}</Text></View>)}</View>}</Card>}
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+      <View style={{ flex: 1, minWidth: 160, gap: 12 }}><Text style={ui.kicker}>FACULTY WORKSPACE / {tabToSection[tab].toUpperCase()}</Text><Text style={ui.title}>{tabCopy[tab].title}</Text></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Load demo records" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => void loadDemo()} style={({ pressed }) => [ui.secondary, { minHeight: 44, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 22, alignItems: 'center', justifyContent: 'center', opacity: busy || pressed ? 0.5 : 1 }]}><Text style={[ui.body, { fontSize: 13 }]}>Demo</Text></Pressable>
+    </View>
+    {tab !== 'Overview' && <Text style={ui.muted}>{tabCopy[tab].description}</Text>}
+    {demoActive && tab !== 'Overview' && dashboard && <View style={ui.row}>{demoMetrics[tab].map(key => <View key={key} style={[ui.chip, { minWidth: 150, gap: 6 }]}><Text style={ui.score}>{dashboard.metrics[key] ?? '—'}</Text><Text style={ui.body}>{key.replaceAll('_', ' ')}</Text></View>)}</View>}
     {busy && <View style={ui.row}><ActivityIndicator accessibilityLabel="Loading faculty data"/><Text style={ui.muted}>Loading faculty-scoped data…</Text></View>}{!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Text style={ui.muted}>Refresh to reload saved records. If demo loading was interrupted, Load demo records safely resumes it.</Text><Action secondary disabled={busy} onPress={() => void run(load)}>Retry loading workspace</Action></Card>}{!!message && <Card><Text accessibilityLiveRegion="polite" style={ui.body}>{message}</Text></Card>}
     <Choices label="Cohort" values={[{ value: 0, label: 'All assigned students' }, ...cohorts.map(x => ({ value: x.id, label: `${x.name} (${x.students})` }))]} selected={filter.cohort_id ?? 0} onSelect={id => { setFilter(x => ({ ...x, cohort_id: id || undefined })); setGaps(null); setDrill(null); }}/>
     <Details label="Search and cohort filters"><Field label="Search name or student ID" value={filter.q ?? ''} onChange={q => setFilter(x => ({ ...x, q }))}/><View style={{ gap: 12 }}>{(['department', 'batch', 'section'] as const).map(key => <Field key={key} label={`Filter ${key}`} value={filter[key] ?? ''} onChange={value => setFilter(x => ({ ...x, [key]: value }))}/>)}</View>

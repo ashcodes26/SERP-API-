@@ -7,7 +7,7 @@ import { Action, Card, Details, ui } from '@/components/career-ui';
 import { Check, Confirm, Field, pickResume } from '@/components/workspace-controls';
 import { releasePickedResume } from '@/utils/picked-resume';
 import { downloadResume } from '@/utils/resume-download';
-import { replaceSuggestedText, suggestionIsApplied } from '@/utils/resume-workspace';
+import { replaceSuggestedText, resumeAnalysisRequirements, suggestionIsApplied } from '@/utils/resume-workspace';
 import RevisionEditor from '@/components/revision-editor';
 import { BarChart } from '@/components/analytics';
 import { CareerAssetHeader } from '@/components/career-asset-header';
@@ -80,8 +80,9 @@ export default function ResumeScreen() {
     return () => { active = false; };
   }, [params.job_id, student]);
   const open = (url: string) => void perform(async () => { if (!/^https:\/\//i.test(url)) throw new Error('This source URL is unavailable.'); await Linking.openURL(url); });
+  const analysisRequirements = resumeAnalysisRequirements({ mode, title, description, job, consent: aiConsent });
   const analyze = () => {
-    if (!workspace) return;
+    if (!workspace || busy || analysisRequirements.length) return;
     void perform(async () => {
       const next = await resumeApi.analyze(workspace.id, mode === 'listing' && job ? { version: workspace.version, ai_consent: aiConsent, job_id: job.id } : { version: workspace.version, ai_consent: aiConsent, title: title.trim(), description: description.trim() });
       setWorkspace(next); setFinalReview(false); await loadList();
@@ -119,12 +120,16 @@ export default function ResumeScreen() {
       </Details></Card>
       {workspace && <>
         <Card><Text style={ui.kicker}>STEP 2 / TARGET</Text><Text style={ui.heading}>Choose what this resume should address</Text><Text style={ui.muted}>Use your own job description or select a retrieved listing. A retrieved opening may no longer be active.</Text><View style={ui.row}><Action secondary disabled={busy} onPress={() => setMode('manual')}>Paste job description{mode === 'manual' ? ' ✓' : ''}</Action><Action secondary disabled={busy} onPress={() => setMode('listing')}>Select retrieved listing{mode === 'listing' ? ' ✓' : ''}</Action></View>
-          {mode === 'manual' ? <><Text style={ui.muted}>Source: your description · unverified opening</Text><Field label="Manual target job title" value={title} onChange={setTitle} maxLength={200} disabled={busy} /><Field label="Manual job description" value={description} onChange={setDescription} multiline disabled={busy} /></> : <><Field label="Resume target search role" value={role} onChange={setRole} maxLength={120} disabled={busy} /><Field label="Resume target search location" value={location} onChange={setLocation} maxLength={120} disabled={busy} /><Action disabled={busy || !role.trim()} onPress={() => void perform(async () => { const result = await jobsApi.search({ role: role.trim(), location: location.trim() }); setListings(result.jobs); setSearchStatus(`${result.jobs.length} listings / ${result.cache_status.replaceAll('_', ' ')} / Retrieved ${new Date(result.retrieved_at).toLocaleString()}. ${result.warnings.join(' ')}`); })}>Search jobs</Action><Text style={ui.muted}>{searchStatus}</Text>{listings.map(item => <Action key={item.id} secondary disabled={busy} onPress={() => void perform(async () => setJob(await jobsApi.detail(item.id)))}>{item.title} / {item.company ?? 'Company unavailable'} / {item.location ?? 'Location unavailable'}{job?.id === item.id ? ' ✓' : ''}</Action>)}
+          {mode === 'manual' ? <><Text style={ui.muted}>Source: your description · unverified opening. Both fields are required for Gemini feedback.</Text><Field label="Manual target job title" value={title} onChange={setTitle} maxLength={200} disabled={busy} /><Field label="Manual job description" value={description} onChange={setDescription} multiline disabled={busy} /><Text style={ui.muted}>{description.trim().length} characters · minimum 30</Text></> : <><Field label="Resume target search role" value={role} onChange={setRole} maxLength={120} disabled={busy} /><Field label="Resume target search location" value={location} onChange={setLocation} maxLength={120} disabled={busy} /><Action disabled={busy || !role.trim()} onPress={() => void perform(async () => { const result = await jobsApi.search({ role: role.trim(), location: location.trim() }); setListings(result.jobs); setSearchStatus(`${result.jobs.length} listings / ${result.cache_status.replaceAll('_', ' ')} / Retrieved ${new Date(result.retrieved_at).toLocaleString()}. ${result.warnings.join(' ')}`); })}>Search jobs</Action><Text style={ui.muted}>{searchStatus}</Text>{listings.map(item => <Action key={item.id} secondary disabled={busy} onPress={() => void perform(async () => setJob(await jobsApi.detail(item.id)))}>{item.title} / {item.company ?? 'Company unavailable'} / {item.location ?? 'Location unavailable'}{job?.id === item.id ? ' ✓' : ''}</Action>)}
             {job && <View style={ui.divider}><Text style={ui.heading}>{job.title}</Text><Text style={ui.body}>{job.company ?? 'Company unavailable'} / {job.location ?? 'Location unavailable'}</Text><Text style={ui.muted}>{job.provenance.replaceAll('_', ' ')} / Opening not verified active / Retrieved {new Date(job.retrieved_at).toLocaleString()}</Text>{job.source_url && <Action secondary disabled={busy} onPress={() => open(job.source_url!)}>Open target source ↗</Action>}<Text selectable style={ui.body}>{job.description || 'Description unavailable. Use the manual description option.'}</Text><Text style={ui.body}>Extracted requirements: {job.skills.filter(x => x.requirement_type !== 'mentioned').map(x => `${x.name} (${x.requirement_type})`).join(', ') || 'Insufficient explicit requirements'}</Text>{job.warnings.map(value => <Text style={ui.muted} key={value}>{value}</Text>)}{!!job.missing_fields.length && <Text style={ui.muted}>Missing fields: {job.missing_fields.join(', ')}</Text>}</View>}
           </>}
           <Text style={ui.muted}>Gemini feedback is optional. It sends the original resume and target description to Google. We remove recognizable email, phone, address and contact headers where feasible, but this is not complete anonymization. Do not send sensitive, confidential, or personal information on the free tier.</Text>
           <Check label="Send my de-identified resume and job description to Google for Gemini feedback." checked={aiConsent} onChange={setAiConsent} disabled={busy} />
-          <Action disabled={busy || !aiConsent || (mode === 'manual' ? !title.trim() || description.trim().length < 30 : !job || job.description.length < 30)} onPress={analyze}>{operationBusy ? 'Working…' : 'Analyze with Gemini'}</Action><Text style={ui.muted}>Gemini reviews the preserved original. Reanalysis resets edit decisions.</Text>
+          <View accessibilityLiveRegion="polite" style={{ gap: 6 }}>
+            <Text style={ui.label}>{busy ? 'Wait for the current request to finish.' : analysisRequirements.length ? 'To enable Gemini analysis:' : 'Ready to analyze with Gemini.'}</Text>
+            {!busy && analysisRequirements.map(message => <Text key={message} style={ui.body}>• {message}</Text>)}
+          </View>
+          <Action disabled={busy || analysisRequirements.length > 0} onPress={analyze}>{operationBusy ? 'Working…' : 'Analyze with Gemini'}</Action><Text style={ui.muted}>Gemini reviews the preserved original. Reanalysis resets edit decisions.</Text>
         </Card>
         {analysis && <>
           <Card><Text style={ui.kicker}>STEP 3 / REVIEW</Text><Text style={ui.heading}>Gemini feedback</Text>

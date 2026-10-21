@@ -34,6 +34,14 @@ def cohorts(db: Session = Depends(get_db), principal=Depends(require_admin)):
             students=len(p.cohort_ids(db, principal, row.id))) for row in rows]
 
 
+@router.post('/admin/demo', response_model=s.FacultyDemoOut)
+def demo_records(db: Session = Depends(get_db), principal=Depends(require_admin)):
+    if get_settings().app_env not in {'development', 'test'}:
+        p.fail(404, 'DEMO_DISABLED', 'Demo fixtures are available only in local development.')
+    from app.services.faculty_demo import load_demo
+    return load_demo(db, principal)
+
+
 @router.post('/admin/cohorts', response_model=s.CohortOut, status_code=201)
 def create_cohort(body: s.CohortIn, db: Session = Depends(get_db), principal=Depends(require_admin)):
     item = m.Cohort(admin_id=principal.account_id, **body.model_dump())

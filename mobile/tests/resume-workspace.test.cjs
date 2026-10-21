@@ -7,7 +7,17 @@ const ts = require('typescript');
 const file = path.resolve(__dirname, '../src/utils/resume-workspace.ts');
 const compiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const runtime = new Module(file, module); runtime._compile(compiled, file);
-const { validateResumeFile, validTaskDate, replaceSuggestedText, suggestionIsApplied, highlightedRevision } = runtime.exports;
+const { validateResumeFile, validTaskDate, replaceSuggestedText, suggestionIsApplied, highlightedRevision, resumeAnalysisRequirements } = runtime.exports;
+test('Gemini requirements explain missing targets even after consent and enforce the trimmed description boundary', () => {
+  const target = { mode: 'manual', title: '', description: '', job: null, consent: true };
+  assert.equal(resumeAnalysisRequirements(target).length, 2);
+  assert.equal(resumeAnalysisRequirements({ ...target, title: 'Engineer', description: 'x'.repeat(29) }).length, 1);
+  assert.deepEqual(resumeAnalysisRequirements({ ...target, title: 'Engineer', description: 'x'.repeat(30) }), []);
+  assert.match(resumeAnalysisRequirements({ ...target, title: 'Engineer', description: 'x'.repeat(30), consent: false })[0], /consent/);
+  assert.match(resumeAnalysisRequirements({ ...target, mode: 'listing' })[0], /Select a retrieved/);
+  assert.match(resumeAnalysisRequirements({ ...target, mode: 'listing', job: { description: ' '.repeat(30) } })[0], /too little/);
+  assert.deepEqual(resumeAnalysisRequirements({ ...target, mode: 'listing', job: { description: 'x'.repeat(30) } }), []);
+});
 test('resume upload accepts implemented formats and rejects empty and oversized files before sending', () => {
   assert.equal(validateResumeFile('Resume.DOCX', 1048576), null);
   assert.equal(validateResumeFile('resume.txt'), null);

@@ -22,6 +22,7 @@ export interface CohortIn { name: string; department: string; batch: string; sec
 export interface ImportPreviewIn { job_id: number; mapping: Record<string, string> }
 export interface ImportConfirmIn { job_id: number; update_duplicates?: boolean }
 export interface CohortOut extends CohortIn { id: number; students: number }
+export interface FacultyDemoOut { provenance: 'demo_fixture'; cohort_id: number; job_id: number; student_id: number; message: string }
 export interface PlacementStudentOut {
   id: number; student_id: string; name: string; department: string | null; batch: string | null; section: string | null;
   profile_completion: number; resume_status: string; assessments_completed: number; roadmap_completed: number; roadmap_total: number;

@@ -1072,6 +1072,14 @@ class CohortOut(CohortIn, ORM):
     students: int = 0
 
 
+class FacultyDemoOut(BaseModel):
+    provenance: Literal['demo_fixture'] = 'demo_fixture'
+    cohort_id: int
+    job_id: int
+    student_id: int
+    message: str = 'Demo fixtures loaded. All profiles, evidence, reviews, training and application outcomes in this cohort are synthetic.'
+
+
 class PlacementStudentOut(BaseModel):
     id: int
     student_id: str

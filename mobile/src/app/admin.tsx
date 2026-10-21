@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, router } from 'expo-router';
 import { Action, Card, Details, ui } from '@/components/career-ui';
@@ -41,6 +41,7 @@ export default function Admin() {
   const [message, setMessage] = useState('');
   const [training, setTraining] = useState({ title: '', kind: 'project' as C.TrainingIn['kind'], instructions: '', resource_url: '', deadline: '', skill_id: null as number | null, roadmap_item_id: null as number | null });
   const [assignee, setAssignee] = useState<'cohort' | 'student'>('cohort');
+  const demoLock = useRef(false);
   const selectedStudent = Number(params.student) || null;
   const tab = sectionToTab[resolveFacultySection(params.section, params.student)];
   const scopeSummary = facultyScopeSummary(applied, cohorts);
@@ -55,6 +56,27 @@ export default function Admin() {
     setCohorts(c); setRoles(r); setDashboard(d); setStudents(list); setDrives(opportunities);
     if (selectedStudent) setDetail(await placementApi.detail(selectedStudent)); else setDetail(null);
   }, [applied, page, selectedStudent]);
+  async function loadDemo() {
+    if (busy || demoLock.current) return;
+    demoLock.current = true;
+    try {
+      await run(async () => {
+        const demo = await placementApi.loadDemo();
+        const scope: C.PlacementFilter = { cohort_id: demo.cohort_id };
+        const [c, r, stats, list, opportunities, skillGaps] = await Promise.all([
+          placementApi.cohorts(), placementApi.roles(), placementApi.dashboard(scope),
+          placementApi.students(scope), placementApi.adminDrives(),
+          placementApi.gaps(demo.cohort_id, demo.job_id),
+        ]);
+        setCohorts(c); setRoles(r); setDashboard(stats); setStudents(list); setDrives(opportunities);
+        setFilter(scope); setApplied(scope); setPage(1); setRoleId(demo.job_id);
+        setGaps(skillGaps); setDrill(null); setEditDrive(null);
+        setDetail(null); setAssignee('cohort');
+        router.setParams({ student: '' });
+        setMessage(demo.message);
+      });
+    } finally { demoLock.current = false; }
+  }
   useFocusEffect(useCallback(() => { void run(load); }, [run, load]));
   const openStudent = (id: number) => { setDetail(null); router.setParams({ student: String(id), section: 'students' }); };
   async function createCohort() { await placementApi.createCohort(cohortForm); await load(); setMessage('Cohort saved. Import students into it, or grant existing students with the local setup command.'); }
@@ -67,9 +89,20 @@ export default function Admin() {
     await load(); setMessage('Training assignments saved for the selected assignees.');
   }
   const skills = [...new Map(roles.flatMap(x => x.skills).map(x => [x.skill.id, x.skill])).values()];
+  const demoActive = cohorts.some(x => x.id === applied.cohort_id && x.name === 'Demo fixtures - placement workspace');
+  const visibleDrives = applied.cohort_id ? drives.filter(x => x.cohort_id === applied.cohort_id) : drives;
+  const demoMetrics: Record<Tab, string[]> = {
+    Overview: [], Students: ['assigned_students', 'profile_complete', 'students_assessed'],
+    'Skill gaps': ['assigned_students', 'students_assessed', 'assessment_attempts'],
+    Drives: ['applications', 'offers', 'students_offered'],
+    Training: ['training_total', 'training_completed', 'resumes_submitted', 'resumes_approved'],
+    Reports: ['assigned_students', 'assessment_attempts', 'training_completed', 'applications', 'offers'],
+  };
   return <ScrollView style={ui.screen} contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
     <Text style={ui.kicker}>FACULTY WORKSPACE / {tabToSection[tab].toUpperCase()}</Text><Text style={ui.title}>{tabCopy[tab].title}</Text><Text style={ui.muted}>{tabCopy[tab].description}</Text>
-    {busy && <View style={ui.row}><ActivityIndicator accessibilityLabel="Loading faculty data"/><Text style={ui.muted}>Loading faculty-scoped data…</Text></View>}{!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Text style={ui.muted}>No faculty scope or student data was changed. Refresh to try again.</Text><Action secondary disabled={busy} onPress={() => void run(load)}>Retry loading workspace</Action></Card>}{!!message && <Card><Text accessibilityLiveRegion="polite" style={ui.body}>{message}</Text></Card>}
+    <Card><Text style={ui.label}>DEMO RECORDS</Text><Text style={ui.muted}>Explore this section with six fictional students, skill evidence, reviews, training and placement outcomes. Reuses a separate demo cohort; repeated clicks keep saved demo edits.</Text><Action secondary disabled={busy} onPress={() => void loadDemo()}>Load demo records</Action></Card>
+    {demoActive && <Card><Text accessibilityLiveRegion="polite" style={ui.label}>DEMO FIXTURE / SYNTHETIC DATA</Text><Text style={ui.body}>All records and outcomes in the selected demo cohort are fictional. Stats below are calculated from its saved records.</Text>{tab !== 'Overview' && dashboard && <View style={ui.row}>{demoMetrics[tab].map(key => <View key={key} style={[ui.chip, { minWidth: 150, gap: 6 }]}><Text style={ui.score}>{dashboard.metrics[key] ?? '—'}</Text><Text style={ui.body}>{key.replaceAll('_', ' ')}</Text></View>)}</View>}</Card>}
+    {busy && <View style={ui.row}><ActivityIndicator accessibilityLabel="Loading faculty data"/><Text style={ui.muted}>Loading faculty-scoped data…</Text></View>}{!!error && <Card><Text accessibilityRole="alert" style={ui.error}>{error}</Text><Text style={ui.muted}>Refresh to reload saved records. If demo loading was interrupted, Load demo records safely resumes it.</Text><Action secondary disabled={busy} onPress={() => void run(load)}>Retry loading workspace</Action></Card>}{!!message && <Card><Text accessibilityLiveRegion="polite" style={ui.body}>{message}</Text></Card>}
     <Choices label="Cohort" values={[{ value: 0, label: 'All assigned students' }, ...cohorts.map(x => ({ value: x.id, label: `${x.name} (${x.students})` }))]} selected={filter.cohort_id ?? 0} onSelect={id => { setFilter(x => ({ ...x, cohort_id: id || undefined })); setGaps(null); setDrill(null); }}/>
     <Details label="Search and cohort filters"><Field label="Search name or student ID" value={filter.q ?? ''} onChange={q => setFilter(x => ({ ...x, q }))}/><View style={{ gap: 12 }}>{(['department', 'batch', 'section'] as const).map(key => <Field key={key} label={`Filter ${key}`} value={filter[key] ?? ''} onChange={value => setFilter(x => ({ ...x, [key]: value }))}/>)}</View>
       <Choices label="Progress filter" values={[{ value: '', label: 'All progress' }, { value: 'follow_up', label: 'Needs follow-up' }, { value: 'complete', label: 'No follow-up flags' }]} selected={filter.progress ?? ''} onSelect={progress => setFilter(x => ({ ...x, progress: progress as C.PlacementFilter['progress'] }))}/>
@@ -96,10 +129,10 @@ export default function Admin() {
       {gaps && <><Text style={ui.body}>{gaps.student_count} assigned cohort members · {gaps.job.title}</Text><Text style={ui.muted}>{gaps.source}</Text><Text style={ui.muted}>{gaps.disclaimer}</Text>{gaps.skills.map(x => <Card key={x.skill.id}><Text style={ui.heading}>{x.skill.canonical_name}</Text><Text style={ui.body}>Expected {x.required_level ?? 'Unknown'}/5 · Known gaps {x.common_gap_count} · Unknown proficiency {x.unknown_count}</Text><Text style={ui.body}>Known mean {x.mean_proficiency ?? 'Unavailable'}/5 ({x.known_count}) · Assessed mean {x.mean_assessed_proficiency ?? 'Unavailable'}/5 ({x.assessed_count}) · Missing assessment {x.missing_assessment_count}</Text><View style={ui.row}><Action secondary onPress={() => setDrill(x.gap_student_ids)}>Students with known gaps</Action><Action secondary onPress={() => setDrill(x.unknown_student_ids)}>Unknown proficiency</Action><Action secondary onPress={() => setDrill(x.assessed_student_ids)}>Assessed students</Action><Action secondary onPress={() => setDrill(x.missing_assessment_student_ids)}>Missing assessments</Action></View></Card>)}</>}
       {drill && <Card><Text style={ui.heading}>Students behind this aggregate</Text>{drill.length ? drill.map(id => <Action secondary key={id} onPress={() => openStudent(id)}>Open student {id}</Action>) : <Text style={ui.body}>No students in this category.</Text>}</Card>}
     </>}
-    {tab === 'Drives' && <><Card><Text style={ui.kicker}>COHORT DRIVES</Text><Text style={ui.heading}>Manage placement opportunities</Text><Text style={ui.muted}>Drive eligibility rules are applied by the existing placement workflow. Create or edit a drive only for the selected cohort.</Text></Card>{drives.map(x => <Card key={x.id}><Text style={ui.heading}>{x.company} · {x.role}</Text><Text style={ui.body}>{x.description}</Text><Text style={ui.muted}>Deadline {x.deadline} · Cohort {x.cohort_id}</Text><Action secondary onPress={() => setEditDrive(x)}>Edit drive</Action></Card>)}{!drives.length && <Card><Text style={ui.body}>No placement drives created.</Text><Text style={ui.muted}>Select a cohort below to create its first drive.</Text></Card>}
+    {tab === 'Drives' && <><Card><Text style={ui.kicker}>COHORT DRIVES</Text><Text style={ui.heading}>Manage placement opportunities</Text><Text style={ui.muted}>Drive eligibility rules are applied by the existing placement workflow. Create or edit a drive only for the selected cohort.</Text></Card>{visibleDrives.map(x => <Card key={x.id}><Text style={ui.heading}>{x.company} · {x.role}</Text><Text style={ui.body}>{x.description}</Text><Text style={ui.muted}>Deadline {x.deadline} · Cohort {x.cohort_id}</Text><Action secondary onPress={() => setEditDrive(x)}>Edit drive</Action></Card>)}{!visibleDrives.length && <Card><Text style={ui.body}>No placement drives created.</Text><Text style={ui.muted}>Select a cohort below to create its first drive.</Text></Card>}
       {editDrive ? <><Action secondary onPress={() => setEditDrive(null)}>Cancel edit</Action><DriveEditor key={`${editDrive.id}-${editDrive.version}`} cohortId={editDrive.cohort_id} initial={editDrive} onSaved={async () => { await load(); setEditDrive(null); }}/></> : filter.cohort_id ? <DriveEditor key={filter.cohort_id} cohortId={filter.cohort_id} onSaved={async () => { await load(); setMessage('Drive created.'); }}/>: <Text style={ui.body}>Select a cohort to create a drive.</Text>}
     </>}
-    {tab === 'Training' && <><Card><Text style={ui.kicker}>CONTEXTUAL RESUME REVIEWS</Text><Text style={ui.heading}>Open the student who shared a revision</Text><Text style={ui.body}>Reviews stay attached to the student and shared revision. This protects review context without creating a duplicate storage system.</Text><Action secondary onPress={() => selectView('Students')}>{selectedStudent ? 'Return to this student’s reviews' : 'Open Students & Cohorts to review resumes'}</Action></Card><Card><Text style={ui.kicker}>TRAINING ASSIGNMENT</Text><Text style={ui.heading}>Assign preparation</Text><Text style={ui.muted}>Choose an authorized cohort or the currently open student. Completion requires student-submitted evidence; assessments use the existing quiz service.</Text><Choices label="Assignee" values={[{ value: 'cohort', label: 'Selected cohort' }, { value: 'student', label: 'Open student' }]} selected={assignee} onSelect={value => setAssignee(value as 'cohort' | 'student')}/><Text style={ui.muted}>{assignee === 'student' ? `Student: ${detail?.profile.student.name ?? 'Open a student detail first'}` : `Cohort: ${cohorts.find(x => x.id === filter.cohort_id)?.name ?? 'Select a cohort first'}`}</Text>
+    {tab === 'Training' && <>{demoActive && students && <Card><Text style={ui.heading}>Demo reviews & training records</Text>{students.items.map(item => <View key={item.id} style={ui.divider}><Text style={ui.body}>{item.name} · Review {item.resume_status.replaceAll('_', ' ')} · Training {item.training_completed}/{item.training_total}</Text><Action secondary onPress={() => openStudent(item.id)}>Open demo student records</Action></View>)}</Card>}<Card><Text style={ui.kicker}>CONTEXTUAL RESUME REVIEWS</Text><Text style={ui.heading}>Open the student who shared a revision</Text><Text style={ui.body}>Reviews stay attached to the student and shared revision. This protects review context without creating a duplicate storage system.</Text><Action secondary onPress={() => selectView('Students')}>{selectedStudent ? 'Return to this student’s reviews' : 'Open Students & Cohorts to review resumes'}</Action></Card><Card><Text style={ui.kicker}>TRAINING ASSIGNMENT</Text><Text style={ui.heading}>Assign preparation</Text><Text style={ui.muted}>Choose an authorized cohort or the currently open student. Completion requires student-submitted evidence; assessments use the existing quiz service.</Text><Choices label="Assignee" values={[{ value: 'cohort', label: 'Selected cohort' }, { value: 'student', label: 'Open student' }]} selected={assignee} onSelect={value => setAssignee(value as 'cohort' | 'student')}/><Text style={ui.muted}>{assignee === 'student' ? `Student: ${detail?.profile.student.name ?? 'Open a student detail first'}` : `Cohort: ${cohorts.find(x => x.id === filter.cohort_id)?.name ?? 'Select a cohort first'}`}</Text>
       <Choices label="Training kind" values={(['resource', 'course', 'project', 'assessment'] as const).map(value => ({ value, label: value }))} selected={training.kind} onSelect={kind => setTraining(x => ({ ...x, kind }))}/>
       {(['title', 'instructions', 'resource_url', 'deadline'] as const).map(key => <Field key={key} label={`Training ${key === 'deadline' ? 'deadline (YYYY-MM-DD)' : key.replace('_', ' ')}`} value={training[key]} onChange={value => setTraining(x => ({ ...x, [key]: value }))} multiline={key === 'instructions'}/>)}
       <Choices label="Existing skill (assessment supports SQL, Python, Docker)" values={[{ value: 0, label: 'None' }, ...skills.map(x => ({ value: x.id, label: x.canonical_name }))]} selected={training.skill_id ?? 0} onSelect={skill_id => setTraining(x => ({ ...x, skill_id: skill_id || null }))}/>

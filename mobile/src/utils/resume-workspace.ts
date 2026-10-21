@@ -1,3 +1,20 @@
+export function resumeAnalysisRequirements(target: {
+  mode: 'manual' | 'listing'; title: string; description: string;
+  job: { description: string } | null; consent: boolean;
+}): string[] {
+  const missing: string[] = [];
+  if (target.mode === 'manual') {
+    if (!target.title.trim()) missing.push('Enter the target job title above.');
+    if (target.description.trim().length < 30) missing.push('Paste a job description with at least 30 characters above.');
+  } else if (!target.job) {
+    missing.push('Select a retrieved listing above, or switch to Paste job description.');
+  } else if (target.job.description.trim().length < 30) {
+    missing.push('This listing has too little description text. Switch to Paste job description and add the complete description.');
+  }
+  if (!target.consent) missing.push('Review the Google data-use notice and select the consent checkbox.');
+  return missing;
+}
+
 export function validateResumeFile(name: string, size?: number): string | null {
   if (!/\.(txt|docx|pdf)$/i.test(name)) return 'Choose a text PDF, DOCX or UTF-8 TXT file.';
   if (size !== undefined && size > 1048576) return 'The file exceeds the 1 MiB limit.';

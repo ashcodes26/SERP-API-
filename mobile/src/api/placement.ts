@@ -7,6 +7,7 @@ export function placementQuery(filter: C.PlacementFilter) {
   return query.toString();
 }
 export const placementApi = {
+  loadDemo: () => post<C.FacultyDemoOut>('/api/admin/demo', {}),
   cohorts: () => request<C.CohortOut[]>('/api/admin/cohorts'),
   createCohort: (body: C.CohortIn) => post<C.CohortOut>('/api/admin/cohorts', body),
   dashboard: (filter: C.PlacementFilter) => request<C.PlacementDashboardOut>(`/api/admin/dashboard?${placementQuery(filter)}`),

@@ -85,6 +85,79 @@ def test_accounts_server_roles_and_session_revocation(setup):
     assert api.get('/api/admin/dashboard', headers=auth['faculty-a']).status_code == 401
 
 
+def test_demo_fixtures_populate_stats_idempotently_and_stay_owner_scoped(setup):
+    api, maker, ids, auth = setup
+    headers = auth['faculty-a']
+    assert api.post('/api/admin/demo').status_code == 401
+    assert api.post('/api/admin/demo', headers=auth['alice']).status_code == 403
+    demo = api.post('/api/admin/demo', headers=headers)
+    assert demo.status_code == 200, demo.text
+    body = demo.json()
+    assert body['provenance'] == 'demo_fixture'
+    scope = f'?cohort_id={body["cohort_id"]}'
+    stats = api.get('/api/admin/dashboard' + scope, headers=headers).json()['metrics']
+    assert stats['assigned_students'] == 6
+    assert stats['profile_complete'] == 5
+    assert stats['students_assessed'] == 4 and stats['assessment_attempts'] == 4
+    assert stats['training_total'] == 6 and stats['training_completed'] == 2
+    assert stats['applications'] == 6 and stats['offers'] == 1
+    assert stats['resumes_submitted'] == 2 and stats['resumes_approved'] == 2
+    assert stats['resumes_changes_requested'] == 1
+    gap = api.get(f'/api/admin/skill-gaps{scope}&job_id={body["job_id"]}', headers=headers).json()
+    sql = next(x for x in gap['skills'] if x['skill']['canonical_name'] == 'SQL')
+    assert sql['known_count'] == 4 and sql['unknown_count'] == 2
+    assert sql['missing_assessment_count'] == 2
+    detail = api.get(f'/api/admin/students/{body["student_id"]}', headers=headers).json()
+    assert detail['profile']['student']['is_synthetic']
+    assert detail['reviews'] and detail['training'] and detail['applications'] and detail['assessments']
+    assert detail['roadmap'][0]['resource_provenance'] == 'demo_fixture'
+    models = (m.Student, m.Account, m.Evidence, m.Assessment, m.TrainingAssignment,
+              m.PlacementApplication, m.PlacementDrive, m.FacultyResumeReview, m.ResumeRevision)
+    with maker() as db:
+        counts = [len(list(db.scalars(select(model)))) for model in models]
+    again = api.post('/api/admin/demo', headers=headers)
+    assert again.status_code == 200 and again.json() == body
+    with maker() as db:
+        assert [len(list(db.scalars(select(model)))) for model in models] == counts
+        assert db.get(m.Student, ids['student']).name == '=Synthetic Alice'
+    assert api.get('/api/admin/dashboard' + scope, headers=headers).json()['metrics'] == stats
+    other = api.post('/api/admin/demo', headers=auth['faculty-b']).json()
+    assert other['cohort_id'] != body['cohort_id'] and other['student_id'] != body['student_id']
+    assert api.get('/api/admin/dashboard' + scope, headers=auth['faculty-b']).status_code == 404
+    assert api.get(f'/api/admin/students/{body["student_id"]}', headers=auth['faculty-b']).status_code == 403
+    report = api.get('/api/admin/report' + scope, headers=headers)
+    assert report.status_code == 200
+    rows = list(csv.reader(io.StringIO(report.text)))
+    assert len(rows) == 7 and all('DEMO-FACULTY-' in row[0] for row in rows[1:])
+
+
+def test_demo_fixtures_disabled_in_production(setup, monkeypatch):
+    api, _, _, auth = setup
+    monkeypatch.setenv('APP_ENV', 'production')
+    get_settings.cache_clear()
+    try:
+        assert api.post('/api/admin/demo', headers=auth['faculty-a']).status_code == 404
+    finally:
+        monkeypatch.setenv('APP_ENV', 'test')
+        get_settings.cache_clear()
+
+
+def test_demo_identity_conflict_preserves_existing_records(setup):
+    api, maker, ids, auth = setup
+    with maker() as db:
+        student = db.get(m.Student, ids['student'])
+        student.student_id = f'DEMO-FACULTY-{ids["admin"]}-01'
+        student.is_synthetic = False
+        db.commit()
+    result = api.post('/api/admin/demo', headers=auth['faculty-a'])
+    assert result.status_code == 409
+    with maker() as db:
+        assert db.get(m.Student, ids['student']).name == '=Synthetic Alice'
+        assert not db.get(m.Student, ids['student']).is_synthetic
+        assert not db.scalar(select(m.Cohort.id).where(m.Cohort.name == 'Demo fixtures - placement workspace'))
+        assert not db.scalar(select(m.PlacementDrive.id))
+
+
 def test_scope_search_pagination_and_dashboard(setup):
     api, _, ids, auth = setup
     headers = auth['faculty-a']
